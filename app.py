@@ -141,8 +141,30 @@ elif selected_page == "Dashboard":
     else:
         st.info("Filtered dataset is hidden.")
 
+    # add a bar chart to show student score 
+    st.subheader("Charts")
 
+    chart_col1,chart_col2 = st.columns(2)
 
+    with chart_col1:
+        st.write("Student Score")
+
+        if len(filtered_df) > 0:
+            score_chart = filtered_df.set_index("Student Name")["Score"]
+            st.bar_chart(score_chart)
+        else:
+            st.warning("No data avvailable for score chart.")
+   
+
+    # add a bar chart to show the count of each risk level 
+     with chart_col2:
+        st.write("Student Risk Level")
+    
+        if len(filtered_df) > 0:
+            risk_count = filtered_df("Risk Level").value_counts()
+            st.bar_chart(risk_count)
+        else:
+            st.warning("No data avvailable for risk chart.")
 
 elif selected_page == "Student Data":
     st.title("Student Data")
