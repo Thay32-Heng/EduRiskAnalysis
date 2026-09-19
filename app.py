@@ -33,7 +33,7 @@ if selected_page == "Home":
     st.write("Welcome to your first Streamlit web application.")
     st.success("Streamlit is working successfully!")
     if st.button("Click Me!"):
-        st.write("Welcome!")
+        st.write("Welcome")
 
 elif selected_page == "Student Data":
     st.title("Student Data")
