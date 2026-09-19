@@ -30,6 +30,6 @@ streamlit run app.py
 
 ## Student Information
 
-Name:
-Student ID:
-Class:
+Name: Heng Sengthay
+Student ID: 73191
+Class: M2
