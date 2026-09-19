@@ -157,7 +157,7 @@ elif selected_page == "Dashboard":
    
 
     # add a bar chart to show the count of each risk level 
-     with chart_col2:
+    with chart_col2:
         st.write("Student Risk Level")
     
         if len(filtered_df) > 0:
@@ -169,18 +169,29 @@ elif selected_page == "Dashboard":
 elif selected_page == "Student Data":
     st.title("Student Data")
 
-    col1, col2 = st.columns(2)
+    total_students = len(student_df)
+    average_score = student_df["Score"].mean()
+    average_attendance = student_df["Attendance"].mean()
+    high_risk_students = student_df[
+        student_df["Risk Level"] == "High Risk"
+    ].shape[0]
+
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         st.metric("Total Students", total_students)
-        st.metric("Average Score", round(average_score, 2))
 
     with col2:
+        st.metric("Average Score", round(average_score, 2))
+
+    with col3:
         st.metric("Average Attendance", f"{round(average_attendance, 2)}%")
-        st.metric("Low Score Students", low_score_students)
 
+    with col4:
+        st.metric("High Risk Students", high_risk_students)
+
+    st.subheader("Full Student Dataset")
     st.dataframe(student_df)
-
 else:
     st.title("About")
     st.write("This app is part of Lab 01.")
