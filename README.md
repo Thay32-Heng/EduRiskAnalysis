@@ -1,6 +1,6 @@
 ## Content
 
-```markdown
+
 # Lab 01: First Streamlit App
 
 ## Project Theme
