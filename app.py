@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import csv
 
 st.set_page_config(
     page_title="EduRisk Analytics - Lab 02",
@@ -16,7 +15,6 @@ student_df = pd.DataFrame({
     "Study Hours": [12, 8, 3, 15, 5, 14, 9, 7]
 })
 
-# Create a function that classifies each student into a risk levl
 def get_risk_level(score, attendance):
     if score < 60 or attendance < 60:
         return "High Risk"
@@ -30,16 +28,11 @@ student_df["Risk Level"] = student_df.apply(
     axis=1
 )
 
-total_students = len(student_df)
-average_score = student_df["Score"].mean()
-average_attendance = student_df["Attendance"].mean()
-low_score_students = student_df[student_df["Score"] < 60].shape[0]
-
 with st.sidebar:
     st.title("EduRisk Menu")
     selected_page = st.radio(
         "Select Page",
-        ["Home", "Dashboard", "Student Data", "Risk Checker","About"]
+        ["Home", "Dashboard", "Student Data", "Risk Checker", "About"]
     )
 
 if selected_page == "Home":
@@ -48,43 +41,43 @@ if selected_page == "Home":
     st.write("Welcome to Lab 02.")
     st.write("In this lab, you will use Streamlit widgets to explore student performance data.")
     st.success("Lab 02 app is running successfully!")
-    if st.button("Click Me!"):
-        st.write("Welcome❤️")
 
-# add information to the dashboard
 elif selected_page == "Dashboard":
     st.title("Interactive Dashboard")
 
     st.write("Use the filters below to explore student performance.")
-    #add course to dashboard
+
     selected_course = st.selectbox(
         "Select Course",
-        ["ALL"] + list(student_df["Course"].unique())
-    )
-    #add risk to dashboard
-    selected_risk=st.selectbox(
-       "selected_risk",
-       ["ALL","Low Risk","Medium Risk","Hight Risk"],
-    )
-    # add a slider to fitler student by minimun attendacne 
-    min_attendance=st.slider(
-        "Minimun Attendance",
-        0, 100, 0
-    )
-    # add a slider to fitler student by minimun score 
-    min_score=st.slider(
-        "Minimun Score",
-        0, 100, 0
+        ["All"] + list(student_df["Course"].unique())
     )
 
-    # Create a filtered version of the student dataset based on the dasboard widgets.
+    selected_risk = st.selectbox(
+        "Select Risk Level",
+        ["All", "Low Risk", "Medium Risk", "High Risk"]
+    )
+
+    min_attendance = st.slider(
+        "Minimum Attendance",
+        0,
+        100,
+        0
+    )
+
+    min_score = st.slider(
+        "Minimum Score",
+        0,
+        100,
+        0
+    )
+
     filtered_df = student_df.copy()
 
-    if selected_course != ["ALL"]:
-        filtered_df= filtered_df[filtered_df["Course"] == selected_course]
-         
-    if selected_risk != ["ALL"]:
-        filtered_df= filtered_df[filtered_df["Risk Level"] == selected_risk]
+    if selected_course != "All":
+        filtered_df = filtered_df[filtered_df["Course"] == selected_course]
+
+    if selected_risk != "All":
+        filtered_df = filtered_df[filtered_df["Risk Level"] == selected_risk]
 
     filtered_df = filtered_df[
         filtered_df["Attendance"] >= min_attendance
@@ -94,77 +87,73 @@ elif selected_page == "Dashboard":
         filtered_df["Score"] >= min_score
     ]
 
-    # add dashboard metrics that update based on the filtered data.
     total_students = len(filtered_df)
 
     if len(filtered_df) > 0:
-        average_score = filtered_df["Score".mean()]
-        average_attendance = filtered_df["Attendance".mean()]
+        average_score = filtered_df["Score"].mean()
+        average_attendance = filtered_df["Attendance"].mean()
     else:
         average_score = 0
         average_attendance = 0
-    high_risk_student = filtered_df[
+
+    high_risk_students = filtered_df[
         filtered_df["Risk Level"] == "High Risk"
     ].shape[0]
+
     st.subheader("Dashboard Metrics")
 
-    col1,col2,col3,col4 = st.columns(4)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         st.metric("Students", total_students)
 
     with col2:
-        st.metric("Average Score", round(average_score,2))
+        st.metric("Average Score", round(average_score, 2))
 
     with col3:
-        st.metric("Average Attendance", f"{round(average_attendance,2)}%")
+        st.metric("Average Attendance", f"{round(average_attendance, 2)}%")
 
     with col4:
-        st.metric("High Risk", high_risk_student)
+        st.metric("High Risk", high_risk_students)
 
-    # add a checkbox that allows the user to show or hide the filtered dataset.
     show_data = st.checkbox("Show Filtered Dataset", True)
 
     if show_data:
         st.subheader("Filtered Student Dataset")
         st.dataframe(filtered_df)
 
-        #add a button to download the filtered dataset as a CSV file.
-        csv = filtered_df.to_csv(index=False).encode("utf-8")
+        csv = filtered_df.to_csv(index=False)
+
         st.download_button(
             label="Download Filtered Data",
             data=csv,
             file_name="filtered_student_data.csv",
             mime="text/csv"
         )
-
     else:
         st.info("Filtered dataset is hidden.")
 
-    # add a bar chart to show student score 
     st.subheader("Charts")
 
-    chart_col1,chart_col2 = st.columns(2)
+    chart_col1, chart_col2 = st.columns(2)
 
     with chart_col1:
-        st.write("Student Score")
+        st.write("Student Scores")
 
         if len(filtered_df) > 0:
             score_chart = filtered_df.set_index("Student Name")["Score"]
             st.bar_chart(score_chart)
         else:
-            st.warning("No data avvailable for score chart.")
-   
+            st.warning("No data available for score chart.")
 
-    # add a bar chart to show the count of each risk level 
     with chart_col2:
-        st.write("Student Risk Level")
-    
+        st.write("Risk Level Count")
+
         if len(filtered_df) > 0:
-            risk_count = filtered_df("Risk Level").value_counts()
+            risk_count = filtered_df["Risk Level"].value_counts()
             st.bar_chart(risk_count)
         else:
-            st.warning("No data avvailable for risk chart.")
+            st.warning("No data available for risk chart.")
 
 elif selected_page == "Student Data":
     st.title("Student Data")
@@ -192,8 +181,34 @@ elif selected_page == "Student Data":
 
     st.subheader("Full Student Dataset")
     st.dataframe(student_df)
+
+elif selected_page == "Risk Checker":
+    st.title("Single Student Risk Checker")
+
+    with st.form("risk_checker_form"):
+        input_name = st.text_input("Student Name")
+        input_score = st.number_input("Score", 0, 100, 50)
+        input_attendance = st.number_input("Attendance", 0, 100, 50)
+        submitted = st.form_submit_button("Check Risk")
+
+    if submitted:
+        risk_result = get_risk_level(input_score, input_attendance)
+
+        st.write("Student Name:", input_name)
+        st.write("Score:", input_score)
+        st.write("Attendance:", input_attendance)
+
+        if risk_result == "Low Risk":
+            st.success("Risk Level: Low Risk")
+        elif risk_result == "Medium Risk":
+            st.warning("Risk Level: Medium Risk")
+        else:
+            st.error("Risk Level: High Risk")
+
 else:
     st.title("About")
-    st.write("This app is part of Lab 01.")
+    st.write("This app is part of Lab 02.")
     st.write("Course: Web App Development for Data Science")
     st.write("Project Theme: EduRisk Analytics")
+    st.write("Topic: Streamlit Interactive Dashboard")
+    st.info("Ethics Reminder: Risk prediction should support students, not punish them.")
