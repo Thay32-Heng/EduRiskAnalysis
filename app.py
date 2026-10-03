@@ -23,12 +23,18 @@ st.set_page_config(
 
 # --------------------------------------------------------------- placeholders
 # TODO: replace with your own dataframe / model output.
-#       Expected columns: Student Name, Course, Score, Attendance,
-#       Study Hours, Risk Level.
-df = pd.DataFrame()
+df = pd.DataFrame(
+    {
+        "Student Name": ["Dara", "Sophea", "Vuthy", "Malis", "Rithy", "Sreyneang", "Chan", "Bopha"],
+        "Course": ["Python", "Statistics", "Python", "Database", "Web App", "Database", "Python", "Statistics"],
+        "Score": [85, 68, 45, 92, 58, 91, 72, 62],
+        "Attendance": [90, 75, 50, 95, 60, 94, 80, 88],
+        "Study Hours": [12, 8, 3, 15, 5, 14, 9, 7],
+    }
+)
 
-# Options for the course filter, e.g. ["Data Science", "Machine Learning"].
-COURSES: list[str] = []
+# Options for the course filter.
+COURSES = ["Python", "Statistics", "Database", "Web App"]
 
 HIGH_RISK = "High Risk"
 
@@ -65,6 +71,13 @@ def count_risk(frame, level):
     if frame.empty or "Risk Level" not in frame.columns:
         return 0
     return int((frame["Risk Level"] == level).sum())
+
+
+# TODO: replace with your model's output if it produces the risk level.
+df["Risk Level"] = [
+    classify_risk(score, attendance)
+    for score, attendance in zip(df["Score"], df["Attendance"])
+]
 
 
 def apply_filters(frame, course, risk, min_attendance, min_score):
@@ -229,7 +242,7 @@ def render_charts(view):
             "Student scores",
             "Individual performance out of 100",
             "Score",
-            score_legend=True,
+            score_legend= False,
             chart=ui.score_chart(view),
         )
 
@@ -242,6 +255,7 @@ def render_charts(view):
             score_legend=False,
             chart=ui.risk_chart(view),
         )
+        ui.risk_legend()
 
 
 def render_dataset(view):
@@ -304,9 +318,7 @@ def page_home():
 
     st.success("Lab 02 app is running successfully!")
 
-    ui.section_heading(
-        "Features", "What this lab covers", "Converted from the Figma design"
-    )
+    ui.section_heading("Features", "What this lab covers", "Figma design in Streamlit")
 
     features = [
         (
@@ -332,17 +344,19 @@ def page_home():
             with column:
                 ui.feature_card(title, description)
 
-    ui.section_heading("Data", "Connect your own dataframe")
+    ui.section_heading("Dataset", "What is loaded right now")
     with ui.card("er-card"):
         st.html(
-            """
+            f"""
             <p class="er-text">
-              The layout is complete and the data layer is a placeholder. Assign
-              your dataframe to <strong>df</strong> in <strong>app.py</strong>
-              and every metric, chart and table on this app renders from it.
+              <strong>{len(df)}</strong> student records are loaded from
+              <strong>df</strong> in <strong>app.py</strong>, and the risk level
+              column is derived with <strong>classify_risk()</strong>.
+              Replace the dataframe with your own model output to go live.
             </p>
             """
         )
+    ui.student_table(df, key="er-home-table")
 
 
 def page_student_data():
@@ -462,7 +476,7 @@ def page_about():
 
 # --------------------------------------------------------------------- main
 if "page" not in st.session_state:
-    st.session_state.page = "Dashboard"
+    st.session_state.page = "Home"
 
 active_page = st.session_state.page
 render_sidebar(active_page)
