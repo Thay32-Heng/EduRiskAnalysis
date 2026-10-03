@@ -192,12 +192,6 @@ def select_filter(label, key, options):
     return st.selectbox(label, options, key=key, label_visibility="collapsed")
 
 
-def toggle(label, key, value=True):
-    """``st.checkbox`` with the same session-state-first default handling."""
-    st.session_state.setdefault(key, value)
-    return st.checkbox(label, key=key)
-
-
 def topbar(page_label, csv_data=None, file_name="filtered_student_data.csv"):
     """Sticky topbar with the breadcrumb, the export action and the menu."""
     with st.container(key="er-topbar"):
@@ -217,13 +211,6 @@ def topbar(page_label, csv_data=None, file_name="filtered_student_data.csv"):
                 )
             else:
                 st.empty()
-
-        with menu:
-            with st.popover("Menu", icon=":material/menu:", width="content"):
-                st.caption(
-                    "EduRisk Analytics - Lab 02. Use the sidebar to move between "
-                    "pages, and the filters on the dashboard to refine the cohort."
-                )
 
 
 def page_intro(eyebrow, title, description, badge="Live dataset"):
@@ -393,7 +380,7 @@ def chart_panel(key, title, description, legend, score_legend, chart):
             st.altair_chart(chart, width="stretch", key=f"{key}-chart")
 
 
-def student_table(students, key="er-dataset-table"):
+def student_table(students, key="er-dataset-table", height=None):
     """The prototype's table, with risk level badges as cell colours."""
     if students.empty:
         st.html(EMPTY_STATE_HTML)
@@ -408,6 +395,10 @@ def student_table(students, key="er-dataset-table"):
     else:
         table = students
 
+    table_args = {}
+    if height is not None:
+        table_args["height"] = height
+
     st.dataframe(
         table,
         key=key,
@@ -417,6 +408,7 @@ def student_table(students, key="er-dataset-table"):
             "Study Hours": st.column_config.NumberColumn("Study Hours", format="%.0f"),
             "Risk Level": st.column_config.TextColumn("Risk Level", width="small"),
         },
+        **table_args,
     )
 
 

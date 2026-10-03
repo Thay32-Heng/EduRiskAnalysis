@@ -42,7 +42,6 @@ COURSE_KEY = "er-filter-course"
 RISK_KEY = "er-filter-risk"
 ATTENDANCE_KEY = "er-filter-attendance"
 SCORE_KEY = "er-filter-score"
-SHOW_TABLE_KEY = "er-show-table"
 
 CSV_NAME = "filtered_student_data.csv"
 
@@ -258,33 +257,24 @@ def render_charts(view):
         ui.risk_legend()
 
 
-def render_dataset(view):
-    """The design's table card with the CSV download."""
-    csv = view.to_csv(index=False)
-
+def render_table_card(frame, key, download_label="Download CSV", height=None):
+    """Table card: heading row, CSV download and the table itself."""
     with ui.card("er-dataset"):
         heading, actions = st.columns([3, 2], vertical_alignment="center")
 
         with heading:
-            st.html(ui.DATASET_HEADING_HTML.format(count=len(view)))
+            st.html(ui.DATASET_HEADING_HTML.format(count=len(frame)))
 
         with actions:
-            toggle_col, download_col = st.columns(2, vertical_alignment="center")
-            with toggle_col:
-                show_table = ui.toggle("Show table", SHOW_TABLE_KEY)
-            with download_col:
-                st.download_button(
-                    "Download CSV",
-                    data=csv,
-                    file_name=CSV_NAME,
-                    mime="text/csv",
-                    key="er-download",
-                )
+            st.download_button(
+                download_label,
+                data=frame.to_csv(index=False),
+                file_name=CSV_NAME,
+                mime="text/csv",
+                key="er-download",
+            )
 
-        if show_table:
-            ui.student_table(view)
-        else:
-            st.info("Filtered dataset is hidden.")
+        ui.student_table(frame, key=key, height=height)
 
 
 # -------------------------------------------------------------------- pages
@@ -304,7 +294,6 @@ def page_dashboard():
     view = render_filter_card()
     render_metrics(view)
     render_charts(view)
-    render_dataset(view)
 
 
 def page_home():
@@ -318,46 +307,6 @@ def page_home():
 
     st.success("Lab 02 app is running successfully!")
 
-    ui.section_heading("Features", "What this lab covers", "Figma design in Streamlit")
-
-    features = [
-        (
-            "Filters",
-            "Course, risk level, attendance and score filters that update every panel.",
-        ),
-        (
-            "Metrics",
-            "Students, average score, attendance and high risk counts for the current view.",
-        ),
-        (
-            "Charts",
-            "Per-student score bars and a risk distribution grouped by risk level.",
-        ),
-        (
-            "Dataset",
-            "A filterable table with risk badges and a CSV download for further analysis.",
-        ),
-    ]
-
-    for start in (0, 2):
-        for column, (title, description) in zip(st.columns(2), features[start : start + 2]):
-            with column:
-                ui.feature_card(title, description)
-
-    ui.section_heading("Dataset", "What is loaded right now")
-    with ui.card("er-card"):
-        st.html(
-            f"""
-            <p class="er-text">
-              <strong>{len(df)}</strong> student records are loaded from
-              <strong>df</strong> in <strong>app.py</strong>, and the risk level
-              column is derived with <strong>classify_risk()</strong>.
-              Replace the dataframe with your own model output to go live.
-            </p>
-            """
-        )
-    ui.student_table(df, key="er-home-table")
-
 
 def page_student_data():
     ui.topbar("Student Data")
@@ -368,9 +317,9 @@ def page_student_data():
         badge=f"{len(df)} records",
     )
 
-    render_metrics(df)
-    render_charts(df)
-    render_dataset(df)
+    render_table_card(
+        df, "er-student-data-table", download_label="Download all records", height=560
+    )
 
 
 def page_risk_checker():
@@ -469,9 +418,6 @@ def page_about():
         '<span class="er-chip">Student ID 73191</span>'
         '<span class="er-chip">Class M2</span>'
     )
-
-    ui.section_heading("Dataset", "Records used in this app")
-    ui.student_table(df, key="er-about-table")
 
 
 # --------------------------------------------------------------------- main
