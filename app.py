@@ -39,7 +39,7 @@ from design.theme import AMBER, GREEN, MUTED, PRIMARY, RED, TEXT, inject_theme
 
 # set_page_config has to be the very first Streamlit call in the file.
 st.set_page_config(
-    page_title="EduRisk Analytics - Lab 02",
+    page_title="EduRisk Analytics - Lab 03",
     page_icon="🎓",
     layout="wide",
 )
@@ -79,38 +79,35 @@ def classify_risk(score, attendance):
     return LOW_RISK
 
 
-def load_students():
-    """Return the student table with each student's risk level added.
+def load_student_data():
+    """Load the student table from students.csv, with a clear error if it is missing.
 
-    To use real data, replace the table below with ``pd.read_csv(...)``. The
-    columns the rest of the app expects are Student Name, Course, Score,
-    Attendance, Study Hours and Risk Level.
+    Lab 03 moves the hard-coded dataset out of app.py into students.csv, so the
+    app reads its data from disk instead of from Python literals.
     """
-    students = pd.DataFrame(
-        {
-            "Student Name": [
-                "Dara", "Sophea", "Vuthy", "Malis",
-                "Rithy", "Sreyneang", "Chan", "Bopha",
-            ],
-            "Course": [
-                "Python", "Statistics", "Python", "Database",
-                "Web App", "Database", "Python", "Statistics",
-            ],
-            "Score": [85, 68, 45, 92, 58, 91, 72, 62],
-            "Attendance": [90, 75, 50, 95, 60, 94, 80, 88],
-            "Study Hours": [12, 8, 3, 15, 5, 14, 9, 7],
-        }
-    )
+    try:
+        students = pd.read_csv("students.csv")
+    except FileNotFoundError:
+        st.error(
+            "students.csv was not found. Please place it in the same folder as app.py."
+        )
+        st.stop()
 
-    students["Risk Level"] = [
-        classify_risk(score, attendance)
-        for score, attendance in zip(students["Score"], students["Attendance"])
-    ]
+    # Keep the risk level calculation from Lab 02, applied to the loaded data.
+    students["Risk Level"] = students.apply(
+        lambda row: classify_risk(row["Score"], row["Attendance"]),
+        axis=1,
+    )
     return students
 
 
+# get_risk_level is the name used in the Lab 03 notebook; keep classify_risk as
+# the implementation so nothing else in this file has to change.
+get_risk_level = classify_risk
+
+
 # The one shared dataset that every page reads from.
-df = load_students()
+df = load_student_data()
 
 
 def apply_filters(rows, course, risk, min_attendance, min_score):
@@ -959,10 +956,15 @@ def page_home():
     page_intro(
         "Welcome",
         "EduRisk Analytics",
-        "Interactive student risk monitoring dashboard built with Streamlit.",
-        badge="Lab 02",
+        "Frontend Prototype with CSV Data Loading",
+        badge="Lab 03",
     )
-    st.success("Lab 02 app is running successfully!")
+    st.write("Welcome to Lab 03.")
+    st.write(
+        "In this lab, the app loads student data from students.csv "
+        "using Pandas instead of storing data directly inside app.py."
+    )
+    st.success("Lab 03 app is running successfully!")
 
 
 def page_dashboard():
@@ -984,7 +986,7 @@ def page_dashboard():
 
 
 def page_student_data():
-    """Every student in one table, with no filters."""
+    """Every student in one table, with no filters, plus a data-inspection view."""
     topbar("Student Data")
     page_intro(
         "Student data",
@@ -992,6 +994,13 @@ def page_student_data():
         "Every record in the dataset with its calculated risk level.",
         badge=f"{len(df)} records",
     )
+
+    # Data inspection, as required by Lab 03.
+    st.subheader("Data Inspection")
+    st.write("Rows and Columns:", df.shape)
+    st.write("Column Names:", df.columns.tolist())
+    st.write("First 5 Rows:")
+    st.dataframe(df.head())
 
     render_table_card(
         df,
@@ -1066,8 +1075,8 @@ def page_about():
     page_intro(
         "About",
         "About this project",
-        "Lab 02 of the Web App Development for Data Science course.",
-        badge="Lab 02",
+        "Lab 03 of the Web App Development for Data Science course.",
+        badge="Lab 03",
     )
 
     with st.container(key="er-card"):
@@ -1076,12 +1085,12 @@ def page_about():
             <span class="eyebrow">Project theme</span>
             <p class="er-text">EduRisk Analytics</p>
             <span class="eyebrow" style="margin-top:14px">Topic</span>
-            <p class="er-text">Streamlit interactive dashboard</p>
+            <p class="er-text">Data Loading, Layout, and Frontend Prototype</p>
             <span class="eyebrow" style="margin-top:14px">Description</span>
             <p class="er-text">
-              An interactive student risk monitoring dashboard. The layout and
-              design system come from a Figma Make prototype that was rebuilt
-              with native Streamlit widgets.
+              An interactive student risk monitoring dashboard. Student data is
+              loaded from students.csv with Pandas, and the risk level is
+              calculated from score and attendance.
             </p>
             """
         )
