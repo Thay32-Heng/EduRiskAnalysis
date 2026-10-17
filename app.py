@@ -25,6 +25,8 @@ for a model call and the whole dashboard becomes model-driven.
 """
 
 import altair as alt
+import math
+
 import pandas as pd
 import streamlit as st
 
@@ -167,7 +169,9 @@ def percent_of(part, whole):
     """``part`` as a whole-number percentage of ``whole``, and 0 when whole is 0."""
     if not whole:
         return 0
-    return round(part / whole * 100)
+    # Half-up rounding, not Python's round() - round(12.5) is 12, so 1 of 8
+    # would read "12%" when the reader expects 13%.
+    return math.floor(part / whole * 100 + 0.5)
 
 
 # =============================================================================
@@ -202,13 +206,16 @@ RISK_BADGE_COLORS = {
     "High Risk": {"bg": "rgba(242, 99, 112, 0.16)", "fg": "#f9848e"},
 }
 
-# The order the risk chart draws its three bars in.
-RISK_CHART_ORDER = [HIGH_RISK, LOW_RISK, MEDIUM_RISK]
-RISK_CHART_COLORS = [RED, GREEN, AMBER]
+# The order the risk chart draws its three bars in: calmest first, so the eye
+# reads Low -> Medium -> High instead of jumping from the alarming red bar.
+RISK_CHART_ORDER = [LOW_RISK, MEDIUM_RISK, HIGH_RISK]
+RISK_CHART_COLORS = [GREEN, AMBER, RED]
 
 # Chart styling that the design fixed.
 SCORE_BAR_COLOR = "#7d8dff"
-SCORE_BAR_WIDTH = {"band": 0.38}
+# Scores run out of 100, so the histogram keeps that full width instead of
+# zooming to whatever the current filters happen to cover.
+SCORE_DOMAIN = [0, 100]
 RISK_BAR_WIDTH = {"band": 0.45}
 GRID_COLOR = "rgba(153, 161, 184, 0.16)"
 AXIS_LABEL_COLOR = "#767e81"
@@ -451,90 +458,226 @@ def x_axis():
     )
 
 
+def risk_x_axis():
+    """The risk chart's category axis, with the labels hidden.
+
+    The three bars are told apart by colour (green / amber / red) and the
+    legend chip, so the "Low Risk / Medium Risk / High Risk" text under the
+    chart is noise. ``labels=False`` keeps the axis *component* present - which
+    Vega-Lite needs so it merges with the overlay layer instead of dropping
+    every axis on the chart (see the ``axis=None`` note in ``risk_chart``).
+    """
+    return alt.Axis(
+        title=None,
+        domain=False,
+        tickColor="transparent",
+        labels=False,
+    )
+
+
 def has_chart_data(rows, *columns):
     """True when the table actually has the columns a chart needs."""
     return not rows.empty and all(column in rows.columns for column in columns)
 
 
+def histogram_axis():
+    """A flat number axis for the score histogram, so the bins read as a scale."""
+    return alt.Axis(
+        title=None,
+        values=[0, 20, 40, 60, 80, 100],
+        domain=False,
+        tickColor="transparent",
+        labelColor=CATEGORY_LABEL_COLOR,
+        labelFontSize=10,
+        labelPadding=6,
+        grid=False,
+    )
+
+
+def nice_ticks(max_value, divisions=5):
+    """Rounded whole-number ticks covering ``0`` up to ``max_value``.
+
+    Counts are small integers, so a fixed axis like ``range(0, top + 1)`` ends
+    up crowded or stops short of the tallest bar. Rounding the step to a "nice"
+    number (1, 2, 5, 10 ...) keeps roughly ``divisions`` gridlines whatever the
+    cohort size is.
+    """
+    if max_value <= 0:
+        return [0, 1]
+
+    step = 10 ** math.floor(math.log10(max_value / divisions))
+    for multiplier in (1, 2, 2.5, 5, 10, 20):
+        if multiplier * step >= max_value / divisions:
+            step = max(1, int(multiplier * step))
+            break
+
+    end = math.ceil(max_value / step) * step
+    return list(range(0, end + 1, step))
+
+
 def score_chart(students):
-    """One bar per student, scored out of 100."""
-    if not has_chart_data(students, "Student Name", "Score"):
+    """How the cohort's scores spread out, as a histogram out of 100.
+
+    The two dashed rules mark the thresholds :func:`classify_risk` uses - red at
+    60 (below it a student is High Risk) and amber at 75 (below it, Medium) -
+    so a bar sitting left of a line reads as "this group needs support".
+    """
+    if not has_chart_data(students, "Score"):
         return None
 
-    ordered = students.sort_values("Student Name")
+    # Vega bins step by 5 and its last bin is [100, 105), so a perfect score
+    # would sit in a bar of its own past the 100 mark. Capping the edge at 95
+    # folds 100 into the 95-100 band, which only ever makes the tallest bar
+    # taller than Vega's own - so the y axis can be generous, never too short.
+    counts: dict[int, int] = {}
+    for value in students["Score"]:
+        # A blank score in a real CSV would raise on int(); skip it instead of
+        # taking the whole page down.
+        if pd.isna(value):
+            continue
+        edge = min(int(value // 5) * 5, 95)
+        counts[edge] = counts.get(edge, 0) + 1
+
+    if not counts:
+        return None
+
+    ticks = nice_ticks(max(counts.values()))
 
     bars = (
-        alt.Chart(ordered)
-        .mark_bar(color=SCORE_BAR_COLOR, cornerRadiusEnd=5, width=SCORE_BAR_WIDTH)
+        alt.Chart(students)
+        .mark_bar(color=SCORE_BAR_COLOR, cornerRadiusEnd=4)
         .encode(
             x=alt.X(
-                "Student Name:N",
-                axis=x_axis(),
-                sort=list(ordered["Student Name"]),
+                "Score:Q",
+                bin=alt.Bin(step=5),
+                scale=alt.Scale(domain=SCORE_DOMAIN),
+                axis=histogram_axis(),
             ),
             y=alt.Y(
-                "Score:Q",
-                scale=alt.Scale(domain=[0, 100]),
-                axis=y_axis([0, 20, 40, 60, 80, 100]),
+                "count():Q",
+                scale=alt.Scale(domain=[0, ticks[-1] * 1.12]),
+                axis=y_axis(ticks),
             ),
             tooltip=[
-                alt.Tooltip("Student Name:N", title="Student"),
-                alt.Tooltip("Course:N"),
-                alt.Tooltip("Score:Q", format=".0f"),
-                alt.Tooltip("Risk Level:N"),
+                alt.Tooltip("Score:Q", bin=alt.Bin(step=5), title="Score band"),
+                alt.Tooltip("count():Q", title="Students"),
             ],
         )
         .properties(height=CHART_HEIGHT)
     )
 
-    return bars.configure_view(strokeWidth=0)
+    thresholds = (
+        alt.Chart(
+            alt.Data(
+                values=[
+                    {"Score": 60, "Threshold": "High"},
+                    {"Score": 75, "Threshold": "Medium"},
+                ]
+            )
+        )
+        .mark_rule(strokeDash=[4, 3], strokeWidth=1.2, opacity=0.7)
+        .encode(
+            # The same fixed scale as the bars, so 60 and 75 sit at their real
+            # positions instead of sliding around with the filtered data.
+            x=alt.X("Score:Q", scale=alt.Scale(domain=SCORE_DOMAIN)),
+            color=alt.Color(
+                "Threshold:N",
+                scale=alt.Scale(domain=["High", "Medium"], range=[RED, AMBER]),
+                legend=None,
+            ),
+        )
+    )
+
+    # Some breathing room above the tallest bar, so the "n - pct" text drawn
+    # over it is never clipped by the frame.
+    return (bars + thresholds).configure_view(strokeWidth=0)
 
 
 def risk_chart(students):
-    """How many students sit at each of the three risk levels."""
+    """How many students sit at each of the three risk levels.
+
+    Each bar carries its own "count - share" label, so the reader gets the
+    number and the percentage without hovering.
+    """
     if not has_chart_data(students, "Risk Level"):
         return None
 
     counts = students["Risk Level"].value_counts()
-    rows = [
-        {"Risk Level": level, "Students": int(counts.get(level, 0))}
-        for level in RISK_CHART_ORDER
-    ]
-    # Always keep three gridlines so a flat chart still has a readable axis.
-    top = max(3, max(row["Students"] for row in rows))
+    # Only the three levels the chart draws, so an unexpected value in the
+    # column cannot quietly shrink every share away from adding up to 100%.
+    total = sum(int(counts.get(level, 0)) for level in RISK_CHART_ORDER)
+
+    def row(level):
+        number = int(counts.get(level, 0))
+        share = percent_of(number, total)
+        # An empty bar gets no label, otherwise "0 - 0%" floats over nothing.
+        label = f"{number} · {share}%" if number else ""
+        return {
+            "Risk Level": level,
+            "Students": number,
+            "Share": share,
+            "Label": label,
+        }
+
+    rows = [row(level) for level in RISK_CHART_ORDER]
+    ticks = nice_ticks(max(item["Students"] for item in rows))
 
     bars = (
         alt.Chart(alt.Data(values=rows))
         .mark_bar(cornerRadiusEnd=5, width=RISK_BAR_WIDTH)
         .encode(
-            x=alt.X("Risk Level:N", axis=x_axis(), sort=RISK_CHART_ORDER),
+            x=alt.X("Risk Level:N", axis=risk_x_axis(), sort=RISK_CHART_ORDER),
             y=alt.Y(
                 "Students:Q",
-                scale=alt.Scale(domain=[0, top]),
-                axis=y_axis(list(range(0, top + 1))),
+                scale=alt.Scale(domain=[0, ticks[-1] * 1.12]),
+                axis=y_axis(ticks),
             ),
             color=alt.Color(
                 "Risk Level:N",
                 scale=alt.Scale(domain=RISK_CHART_ORDER, range=RISK_CHART_COLORS),
                 legend=None,
             ),
-            tooltip=[alt.Tooltip("Risk Level:N"), alt.Tooltip("Students:Q")],
+            tooltip=[
+                alt.Tooltip("Risk Level:N"),
+                alt.Tooltip("Students:Q"),
+                alt.Tooltip("Share:Q", title="Share %", format=".0f"),
+            ],
         )
         .properties(height=CHART_HEIGHT)
     )
 
-    return bars.configure_view(strokeWidth=0)
+    labels = (
+        alt.Chart(alt.Data(values=rows))
+        .mark_text(dy=-9, fontSize=10, color=CATEGORY_LABEL_COLOR)
+        .encode(
+            # Deliberately no ``axis`` here. Vega-Lite merges the axis into a
+            # single component shared by every layer, so writing ``axis=None``
+            # on the label layer does not hide *its* axis - it deletes the bars'
+            # axes too and the chart renders with no scale at all. Leaving the
+            # key out lets both layers agree, and the axes survive.
+            x=alt.X("Risk Level:N", sort=RISK_CHART_ORDER),
+            y=alt.Y("Students:Q"),
+            text=alt.Text("Label:N"),
+        )
+    )
+
+    return (bars + labels).configure_view(strokeWidth=0)
 
 
-def chart_panel(key, title, description, legend, chart):
-    """A chart inside a titled card, or the empty-state note when there is none."""
+def chart_panel(key, title, description, legend, chart, score_legend=False):
+    """A chart inside a titled card, or the empty-state note when there is none.
+
+    ``score_legend`` picks the legend chip style: the score panel counts
+    *students* in score bands, so it gets the score-coloured dot, while the risk
+    panel gets the plain cohort dot.
+    """
     with st.container(key=key):
         st.html(
             CHART_HEADING_HTML.format(
                 title=title,
                 description=description,
                 legend=legend,
-                modifier=" legend-score" if legend == "Score" else "",
+                modifier=" legend-score" if score_legend else "",
             )
         )
         if chart is None:
@@ -766,10 +909,11 @@ def render_charts(view):
     with score_col:
         chart_panel(
             "er-chart-scores",
-            "Student scores",
-            "Individual performance out of 100",
-            "Score",
+            "Score distribution",
+            "How scores spread out, with the 60 and 75 risk thresholds",
+            "Students",
             chart=score_chart(view),
+            score_legend=True,
         )
 
     with risk_col:
@@ -779,6 +923,7 @@ def render_charts(view):
             "Students grouped by current risk level",
             "Cohort",
             chart=risk_chart(view),
+            score_legend=False,
         )
         risk_legend()
 
