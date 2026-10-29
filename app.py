@@ -1106,6 +1106,11 @@ def page_about():
               loaded from students.csv with Pandas, and the risk level is
               calculated from score and attendance.
             </p>
+            <span class="eyebrow" style="margin-top:14px">Live demo</span>
+            <p class="er-text">
+              <a href="https://thay-edurisk.streamlit.app/"
+                 target="_blank" rel="noopener">thay-edurisk.streamlit.app</a>
+            </p>
             """
         )
 

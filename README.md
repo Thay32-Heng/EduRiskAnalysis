@@ -6,6 +6,8 @@ support before the final exam, not after it.
 
 ![EduRisk Analytics dashboard](assets/dashboard.png)
 
+**🌐 Live demo:** https://thay-edurisk.streamlit.app/
+
 ## The problem
 
 End-of-term results tell a lecturer who failed. They do not tell them *who to call
