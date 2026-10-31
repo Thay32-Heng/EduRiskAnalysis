@@ -1,23 +1,22 @@
 """Unit tests for the pure logic in app.py.
 
 The dashboard itself is a UI layer; everything worth testing lives in plain
-functions: the risk rule, the cohort filters and the metric helpers.
+functions: the risk rule, the cohort filters, the metric helpers, and the Lab 04
+form logic (name validation, the history record and the feedback messages).
+The form-to-table flow itself is covered in test_app_flow.py.
 
 Run from the repository root:
 
     python -m unittest discover -s tests -t . -v
 """
 
-import logging
 import unittest
 
 import pandas as pd
 
-# Importing app.py starts Streamlit in bare mode, which floods the output with
-# harmless "missing ScriptRunContext" warnings. Silence them for the test run.
-logging.disable(logging.WARNING)
-import app  # noqa: E402  (import after the warning filter is in place)
-logging.disable(logging.NOTSET)
+# The tests package silences Streamlit's "missing ScriptRunContext" warning when
+# it is imported, which happens before this module.
+import app  # noqa: E402  (imported by path from the repository root)
 
 
 def make_rows():
@@ -144,6 +143,106 @@ class MetricHelperTests(unittest.TestCase):
 
     def test_percent_of_zero_whole_is_zero(self):
         self.assertEqual(app.percent_of(0, 0), 0)
+
+
+class StudentNameValidationTests(unittest.TestCase):
+    """Lab 04 validation: a name of only spaces is not a name."""
+
+    def test_empty_name_is_invalid(self):
+        self.assertFalse(app.is_valid_student_name(""))
+
+    def test_whitespace_only_name_is_invalid(self):
+        self.assertFalse(app.is_valid_student_name("   "))
+        self.assertFalse(app.is_valid_student_name("\t\n"))
+
+    def test_real_name_is_valid(self):
+        self.assertTrue(app.is_valid_student_name("Dara"))
+
+    def test_name_is_trimmed(self):
+        self.assertEqual(app.clean_student_name("  Student A  "), "Student A")
+
+    def test_missing_name_becomes_an_empty_string(self):
+        self.assertEqual(app.clean_student_name(None), "")
+        self.assertFalse(app.is_valid_student_name(None))
+
+    def test_nan_name_is_not_treated_as_a_real_name(self):
+        # str(float("nan")) is the word "nan", which would pass a bare strip().
+        self.assertEqual(app.clean_student_name(float("nan")), "")
+        self.assertFalse(app.is_valid_student_name(float("nan")))
+        self.assertFalse(app.is_valid_student_name(pd.NA))
+
+
+class RiskRecordTests(unittest.TestCase):
+    """The dictionary one form submission adds to the session history."""
+
+    def test_record_has_the_four_lab_columns_in_order(self):
+        record = app.build_risk_record("Student A", 90, 95)
+        self.assertEqual(
+            list(record), ["Student Name", "Score", "Attendance", "Risk Level"]
+        )
+
+    def test_record_trims_the_name(self):
+        record = app.build_risk_record("  Student A  ", 90, 95)
+        self.assertEqual(record["Student Name"], "Student A")
+
+    def test_record_uses_the_risk_rule(self):
+        self.assertEqual(
+            app.build_risk_record("A", 90, 95)["Risk Level"], app.LOW_RISK
+        )
+        self.assertEqual(
+            app.build_risk_record("B", 70, 80)["Risk Level"], app.MEDIUM_RISK
+        )
+        self.assertEqual(
+            app.build_risk_record("C", 50, 85)["Risk Level"], app.HIGH_RISK
+        )
+
+    def test_low_attendance_alone_can_be_high_risk(self):
+        record = app.build_risk_record("D", 80, 55)
+        self.assertEqual(record["Risk Level"], app.HIGH_RISK)
+
+    def test_empty_history_frame_still_has_columns(self):
+        frame = app.history_frame([])
+        self.assertTrue(frame.empty)
+        self.assertEqual(
+            list(frame.columns), ["Student Name", "Score", "Attendance", "Risk Level"]
+        )
+
+    def test_history_frame_keeps_submission_order(self):
+        history = [
+            app.build_risk_record("Student A", 90, 95),
+            app.build_risk_record("Student B", 70, 80),
+        ]
+        frame = app.history_frame(history)
+        self.assertEqual(len(frame), 2)
+        self.assertEqual(list(frame["Student Name"]), ["Student A", "Student B"])
+
+
+class RiskFeedbackTests(unittest.TestCase):
+    """Step 25: each level gets its own alert style and supportive sentence."""
+
+    def test_low_risk_is_a_success_message(self):
+        kind, headline, advice = app.risk_feedback(app.LOW_RISK)
+        self.assertEqual(kind, "success")
+        self.assertIn("Low Risk", headline)
+        self.assertEqual(advice, "Student appears on track.")
+
+    def test_medium_risk_is_a_warning(self):
+        kind, headline, advice = app.risk_feedback(app.MEDIUM_RISK)
+        self.assertEqual(kind, "warning")
+        self.assertIn("Medium Risk", headline)
+        self.assertEqual(advice, "Monitor progress and provide guidance.")
+
+    def test_high_risk_is_an_error(self):
+        kind, headline, advice = app.risk_feedback(app.HIGH_RISK)
+        self.assertEqual(kind, "error")
+        self.assertIn("High Risk", headline)
+        self.assertEqual(advice, "Student may need additional support.")
+
+    def test_every_risk_level_has_feedback(self):
+        for level in app.RISK_LEVELS:
+            kind, headline, advice = app.risk_feedback(level)
+            self.assertIn(kind, ("success", "warning", "error"))
+            self.assertTrue(headline and advice)
 
 
 class NiceTicksTests(unittest.TestCase):

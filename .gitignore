@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .DS_Store
+
+# Exported from the dashboard; the lab says not to submit it.
+filtered_student_data.csv
