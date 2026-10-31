@@ -605,7 +605,8 @@ section[data-testid="stSidebar"] > div {
   transform: translateY(-1px);
 }
 
-.st-key-er-reset button {
+.st-key-er-reset button,
+.st-key-er-clear button {
   padding: 7px 9px;
   border: 0;
   border-radius: 7px;
@@ -615,12 +616,14 @@ section[data-testid="stSidebar"] > div {
   font-size: 13px;
 }
 
-.st-key-er-reset button:hover:enabled {
+.st-key-er-reset button:hover:enabled,
+.st-key-er-clear button:hover:enabled {
   background: var(--er-primary-soft);
   color: #aeb7ff;
 }
 
-.st-key-er-reset button:disabled {
+.st-key-er-reset button:disabled,
+.st-key-er-clear button:disabled {
   background: transparent;
   color: #53596a;
 }

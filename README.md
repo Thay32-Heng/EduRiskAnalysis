@@ -8,6 +8,8 @@ support before the final exam, not after it.
 
 **🌐 Live demo:** https://thay-edurisk.streamlit.app/
 
+**Lab 04 — Forms, Validation, and Session State** (continues from Lab 03)
+
 ## The problem
 
 End-of-term results tell a lecturer who failed. They do not tell them *who to call
@@ -21,11 +23,31 @@ result can be discussed with the student instead of silently acted on.
 |---|---|
 | **Dashboard** | Cohort filters (course, risk level, minimum score/attendance), four KPI cards, score distribution and risk breakdown charts |
 | **Student Data** | Full student table with the calculated risk level, a data-inspection block, and CSV download of the whole cohort (the Dashboard exports the filtered view) |
-| **Risk Checker** | Enter one student's score and attendance to see the risk level and the reason behind it |
+| **Risk Checker** | Enter one student's score and attendance through a validated form to see the risk level and the reason behind it; recent checks stay in the session |
 | **About** | Project scope, stack and author |
 
 Other features: custom dark theme (`design/theme.py`), export-report button,
 missing-CSV error handling, and an ethics reminder on the risk page.
+
+## What Lab 04 adds
+
+The lab asked for a reliable form-based workflow on the Risk Checker page. All of
+it lives in `app.py` and is covered by the unit tests plus the headless app-flow
+tests in `tests/test_app_flow.py`:
+
+```text
+- st.form() grouping the three inputs
+- st.form_submit_button("Check risk") — nothing is calculated until it is clicked
+- Empty student name validation ("Please enter the student name.")
+- Supportive feedback per level: green success, yellow warning, red error
+- st.session_state["risk_history"] — temporary list of recent checks
+- Recent Risk Checks table, built with Pandas from that list
+- Clear History button, with a one-shot confirmation message
+- Ethics reminders on the Risk Checker and Dashboard pages
+```
+
+Session state is temporary by design: the history is dropped when the browser
+session ends and nothing is ever written back to `students.csv`.
 
 ## The risk rule
 
@@ -50,7 +72,7 @@ without touching the layout.
 - Streamlit 1.51+ (tested on 1.66)
 - Pandas 2.2+ (tested on 3.1)
 - Altair (charts)
-- `unittest` for the logic tests
+- `unittest` for the logic tests, Streamlit `AppTest` for the flow tests
 - GitHub Actions running the test suite on every push
 
 ## Project structure
@@ -62,6 +84,8 @@ EduRiskAnalysis/
 ├── .streamlit/config.toml     # Streamlit theme matching the palette
 ├── students.csv               # sample cohort (8 records, synthetic)
 ├── tests/test_logic.py        # risk rule, filters, metrics, dataset contract
+├── tests/test_app_flow.py     # headless AppTest flow: form, history, clear
+├── tests/__init__.py          # package init; silences Streamlit's bare-mode noise
 ├── assets/                    # README screenshots
 ├── requirements.txt
 └── .github/workflows/tests.yml
@@ -90,9 +114,16 @@ The app opens at `http://localhost:8501`.
 python -m unittest discover -s tests -t . -v
 ```
 
-30 tests cover the risk boundaries (59.9 / 60 / 74.9 / 75), missing values,
+66 tests cover the risk boundaries (59.9 / 60 / 74.9 / 75), missing values,
 the four cohort filters, the active-filter counter, the metric helpers, the
-axis ticks and the CSV contract. The same command runs in CI.
+axis ticks, the CSV contract, and the Lab 04 form logic (name validation, the
+history record, the history table and the feedback messages).
+
+`tests/test_app_flow.py` adds 20 of them as *flow* tests: it runs `app.py` with
+Streamlit's `AppTest` and clicks the real widgets - submit the form, get the
+warning for an empty name, watch the history grow, clear it in one click. That
+suite is what catches a broken append or a validation gate that stopped working;
+the plain unit tests cannot see either. The same command runs in CI.
 
 ## Data
 
@@ -125,8 +156,29 @@ Swap in a real export with the same columns and the app works unchanged.
 
 **Heng Sengthay** — Student ID 73191
 Data Science of Engineering, Year 3, Royal University of Phnom Penh
-Course project: Web App Development for Data Science (Lab 03)
+Course project: Web App Development for Data Science (Lab 04)
 GitHub: [@Thay32-Heng](https://github.com/Thay32-Heng)
+
+## Student information
+
+```text
+Name: Heng Sengthay
+Student ID: 73191
+Class: M2
+```
+
+## Required files
+
+```text
+app.py
+students.csv
+requirements.txt
+README.md
+```
+
+`design/theme.py` and `.streamlit/config.toml` hold the styling and are needed
+for the app to look the way it does. Do not submit `.venv/`, `__pycache__/` or
+`filtered_student_data.csv`.
 
 ## License
 

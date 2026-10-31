@@ -111,6 +111,67 @@ def load_student_data():
 # as the implementation so nothing else in this file has to change.
 get_risk_level = classify_risk
 
+# Lab 04: the recent risk checks live in session state. These are the four
+# columns the history table shows, in the order the lab asks for them.
+HISTORY_COLUMNS = ["Student Name", "Score", "Attendance", "Risk Level"]
+
+# The supportive message shown after a check: the alert style, the headline and
+# the sentence that goes with it (Lab 04, Step 25).
+RISK_FEEDBACK = {
+    LOW_RISK: ("success", "Risk Level: Low Risk", "Student appears on track."),
+    MEDIUM_RISK: (
+        "warning",
+        "Risk Level: Medium Risk",
+        "Monitor progress and provide guidance.",
+    ),
+    HIGH_RISK: (
+        "error",
+        "Risk Level: High Risk",
+        "Student may need additional support.",
+    ),
+}
+
+
+def clean_student_name(name):
+    """The name as typed, without the spaces around it.
+
+    A missing name - ``None``, a NaN from a CSV, or pandas' own ``NA`` - comes
+    back as ``""`` so it fails validation instead of turning into the string
+    ``"nan"`` and slipping through.
+    """
+    if name is None or pd.isna(name):
+        return ""
+    return str(name).strip()
+
+
+def is_valid_student_name(name):
+    """True when the name is not empty once the surrounding spaces are gone."""
+    return clean_student_name(name) != ""
+
+
+def build_risk_record(name, score, attendance):
+    """One history row: the submitted name, its numbers and the risk level.
+
+    ``score`` and ``attendance`` come from the form's number inputs, which only
+    ever hand over whole numbers inside 0-100.
+    """
+    return {
+        "Student Name": clean_student_name(name),
+        "Score": int(score),
+        "Attendance": int(attendance),
+        "Risk Level": classify_risk(score, attendance),
+    }
+
+
+def history_frame(history):
+    """The session history as a table, with the four columns even when empty."""
+    return pd.DataFrame(history, columns=HISTORY_COLUMNS)
+
+
+def risk_feedback(level):
+    """(alert style, headline, supportive sentence) for one risk level."""
+    return RISK_FEEDBACK[level]
+
 
 # The one shared dataset that every page reads from.
 df = load_student_data()
@@ -290,6 +351,16 @@ DATASET_HEADING_HTML = """
     <span class="eyebrow">Student data</span>
     <h3>Students at a glance</h3>
     <p>{count} records match the current view</p>
+  </div>
+</div>
+"""
+
+HISTORY_HEADING_HTML = """
+<div class="section-heading dataset-heading">
+  <div>
+    <span class="eyebrow">Session history</span>
+    <h3>Recent risk checks</h3>
+    <p>{note}</p>
   </div>
 </div>
 """
@@ -759,6 +830,24 @@ def risk_banner(level, name, score, attendance):
     )
 
 
+def show_risk_feedback(level):
+    """The colour-coded supportive message that follows a risk check.
+
+    Low Risk is a green success message, Medium Risk a yellow warning and High
+    Risk a red error, so the result reads the same way whether it is scanned by
+    a lecturer or read by the student it is about.
+    """
+    kind, headline, advice = risk_feedback(level)
+    message = f"**{headline}** — {advice}"
+
+    if kind == "success":
+        st.success(message)
+    elif kind == "warning":
+        st.warning(message)
+    else:
+        st.error(message)
+
+
 # ============================================================================
 # 5. PAGE PARTS
 # ============================================================================
@@ -778,6 +867,14 @@ def reset_filters():
     # The two labels showing the slider values need clearing too.
     st.session_state[f"{ATTENDANCE_KEY}_shown"] = 0
     st.session_state[f"{SCORE_KEY}_shown"] = 0
+
+
+def clear_risk_history():
+    """Clear History callback: empty the history and drop the last result."""
+    st.session_state["risk_history"] = []
+    st.session_state.risk_result = None
+    # Read once by render_risk_history to confirm the click, then thrown away.
+    st.session_state["er-history-cleared"] = True
 
 
 def current_filters():
@@ -955,6 +1052,49 @@ def render_table_card(rows, table_key, button_label, height=None):
         student_table(rows, key=table_key, height=height)
 
 
+def render_risk_history():
+    """The Recent Risk Checks card: the session table and its Clear button.
+
+    Clearing runs as the button's callback, before the table is drawn, so one
+    click empties the table and the page falls straight back to "No risk checks
+    yet." instead of needing a second page load.
+    """
+    history = st.session_state["risk_history"]
+
+    with st.container(key="er-card"):
+        heading, action = st.columns([4, 1], vertical_alignment="center")
+
+        with heading:
+            if history:
+                note = (
+                    f"{len(history)} check"
+                    f"{'' if len(history) == 1 else 's'} stored in this session"
+                )
+            else:
+                note = "Nothing checked yet"
+            st.html(HISTORY_HEADING_HTML.format(note=note))
+
+        with action:
+            st.button(
+                "Clear History",
+                key="er-clear",
+                type="tertiary",
+                on_click=clear_risk_history,
+                disabled=not history,
+                width="stretch",
+            )
+
+        if history:
+            student_table(history_frame(history), key="er-history-table")
+        else:
+            st.info("No risk checks yet.")
+
+        # The callback above clears the list before this content is drawn, so
+        # the click is confirmed on the same page load instead of the next one.
+        if st.session_state.pop("er-history-cleared", False):
+            st.success("Risk check history cleared.")
+
+
 # =============================================================================
 # 6. PAGES - one function per screen
 # =============================================================================
@@ -966,9 +1106,10 @@ def page_home():
     page_intro(
         "Welcome",
         "EduRisk Analytics",
-        "Spot the students who need support before the term ends.",
+        "Reliable Risk Checker with Forms and Session State",
         badge="Live prototype",
     )
+    st.write("Welcome to Lab 04.")
     st.write(
         "EduRisk Analytics is a Streamlit dashboard for student academic "
         "monitoring. It reads a cohort CSV, turns score and attendance into a "
@@ -976,9 +1117,13 @@ def page_home():
     )
     st.write(
         "Open **Dashboard** for the cohort overview, **Student Data** for the "
-        "full table, or **Risk Checker** to score one student by hand."
+        "full table, or **Risk Checker** to score one student by hand — now "
+        "through a form that validates the name and keeps the session history."
     )
-    st.success(f"Dataset loaded: {len(df)} students read from students.csv.")
+    st.success(
+        f"Lab 04 app is running successfully — {len(df)} students read from "
+        "students.csv."
+    )
 
 
 def page_dashboard():
@@ -997,6 +1142,12 @@ def page_dashboard():
     view = render_filter_card()
     render_metrics(view)
     render_charts(view)
+
+    section_heading("Ethics", "Support, not punishment")
+    st.info(
+        "Ethics Reminder: Academic monitoring should support students, "
+        "not label or punish them."
+    )
 
 
 def page_student_data():
@@ -1035,6 +1186,11 @@ def page_risk_checker():
         badge="Instant result",
     )
 
+    st.info(
+        "This tool is for academic support. Risk results should help students, "
+        "not label or punish them."
+    )
+
     # A form collects all three inputs before anything is calculated.
     with st.form("er-risk-form", border=False):
         name_col, score_col, attendance_col = st.columns(3)
@@ -1062,24 +1218,38 @@ def page_risk_checker():
                 "Check risk", key="er-submit", width="stretch"
             )
 
-    # Only the run after the button is clicked calculates a result.
+    # Only the run after the button is clicked validates and calculates. An
+    # empty name is stopped here, so it can never reach the history table.
     if submitted:
-        st.session_state.risk_result = (name, int(score), int(attendance))
+        if not is_valid_student_name(name):
+            # Drop the previous result too: leaving it on screen next to the
+            # warning would read as if the rejected submit had produced it.
+            st.session_state.risk_result = None
+            st.warning("Please enter the student name.")
+        else:
+            record = build_risk_record(name, score, attendance)
+            st.session_state["risk_history"].append(record)
+            st.session_state.risk_result = record
 
-    result = st.session_state.get("risk_result")
-    if result:
-        student_name, student_score, student_attendance = result
+    # The last check stays on screen until the next valid check, a rejected
+    # empty-name submit, or a Clear History.
+    latest = st.session_state.get("risk_result")
+    if isinstance(latest, dict):
+        level = latest["Risk Level"]
         risk_banner(
-            classify_risk(student_score, student_attendance),
-            student_name,
-            student_score,
-            student_attendance,
+            level,
+            latest["Student Name"],
+            latest["Score"],
+            latest["Attendance"],
         )
+        show_risk_feedback(level)
+
+    render_risk_history()
 
     section_heading("Ethics", "Use the result responsibly")
-    st.info(
-        "Risk prediction should support students, not punish them. "
-        "Discuss every flag with the student before acting on it."
+    st.warning(
+        "Ethics Reminder: Risk results should be used as guidance for support, "
+        "not as final judgment about a student."
     )
 
 
@@ -1099,12 +1269,16 @@ def page_about():
             <span class="eyebrow">Project theme</span>
             <p class="er-text">EduRisk Analytics</p>
             <span class="eyebrow" style="margin-top:14px">Course</span>
-            <p class="er-text">Web App Development for Data Science — Lab 03</p>
+            <p class="er-text">Web App Development for Data Science — Lab 04</p>
+            <span class="eyebrow" style="margin-top:14px">Topic</span>
+            <p class="er-text">Forms, Validation, and Session State</p>
             <span class="eyebrow" style="margin-top:14px">Description</span>
             <p class="er-text">
               An interactive student risk monitoring dashboard. Student data is
               loaded from students.csv with Pandas, and the risk level is
-              calculated from score and attendance.
+              calculated from score and attendance. This version adds a form
+              with input validation to the Risk Checker page, and keeps the
+              recent checks in session state for the length of the visit.
             </p>
             <span class="eyebrow" style="margin-top:14px">Live demo</span>
             <p class="er-text">
@@ -1134,6 +1308,12 @@ def page_about():
 # =============================================================================
 # 7. RUN - draw the sidebar, then show the page that was clicked
 # =============================================================================
+
+# Lab 04: the recent risk checks are temporary memory. Session state is created
+# once per browser session and dropped on reload, which is exactly the lifetime
+# the lab asks for — nothing is written back to students.csv.
+if "risk_history" not in st.session_state:
+    st.session_state["risk_history"] = []
 
 if "page" not in st.session_state:
     st.session_state.page = "Home"
