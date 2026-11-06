@@ -271,16 +271,22 @@ def course_summary(rows):
     if rows.empty or "Course" not in rows.columns:
         return pd.DataFrame(columns=COURSE_SUMMARY_COLUMNS)
 
-    # "Student Name" is counted rather than the rows, so a blank name cannot
-    # quietly disappear from the class size.
-    name_column = "Student Name" if "Student Name" in rows.columns else "Course"
+    # "size" counts rows, not non-null names: a blank name must not shrink the
+    # class size. dropna=False keeps a row with no course in its own group
+    # instead of deleting it from the summary.
+    aggregations = {"Students": ("Course", "size")}
+    for label, column in (
+        ("Average_Score", "Score"),
+        ("Average_Attendance", "Attendance"),
+        ("Average_Study_Hours", "Study Hours"),
+    ):
+        if column in rows.columns:
+            aggregations[label] = (column, "mean")
 
-    summary = rows.groupby("Course", as_index=False).agg(
-        Students=(name_column, "count"),
-        Average_Score=("Score", "mean"),
-        Average_Attendance=("Attendance", "mean"),
-        Average_Study_Hours=("Study Hours", "mean"),
-    )
+    summary = rows.groupby("Course", dropna=False, as_index=False).agg(**aggregations)
+
+    if "Average_Score" not in summary.columns:
+        return summary.reset_index(drop=True)
 
     return summary.sort_values("Average_Score", kind="stable").reset_index(drop=True)
 
@@ -310,7 +316,7 @@ def risk_summary(rows):
 # ------------------------------------------------------------------- figures
 # The Plotly charts are built in their own functions so the *figure* can be
 # tested: a chart that draws the wrong bars is a bug the browser cannot reveal.
-def plotly_layout(fig):
+def plotly_layout(fig, show_legend=False):
     """Paint a Plotly figure in the dashboard's dark palette.
 
     Streamlit would otherwise apply its own light template over the custom
@@ -324,16 +330,15 @@ def plotly_layout(fig):
         margin=dict(l=44, r=14, t=16, b=34),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        showlegend=False,
+        showlegend=show_legend,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
         font=dict(color=CATEGORY_LABEL_COLOR, size=11),
         xaxis=dict(
-            title=None,
             showgrid=False,
             zeroline=False,
             tickfont=dict(color=AXIS_LABEL_COLOR, size=10),
         ),
         yaxis=dict(
-            title=None,
             gridcolor=PLOTLY_GRID_COLOR,
             zeroline=False,
             tickfont=dict(color=AXIS_LABEL_COLOR, size=10),
@@ -353,7 +358,7 @@ def risk_distribution_figure(rows):
         color_discrete_map=RISK_COLOR_MAP,
         category_orders={"Risk Level": RISK_LEVELS},
         text="Students",
-        labels={"Risk Level": "", "Students": "Students"},
+        labels={"Risk Level": ""},
     )
     # The number on the bar means the value is never encoded by colour alone.
     fig.update_traces(textposition="outside", cliponaxis=False)
@@ -371,7 +376,7 @@ def score_by_risk_figure(rows):
         category_orders={"Risk Level": RISK_LEVELS},
         labels={"Student Name": "", "Score": "Score out of 100"},
     )
-    return plotly_layout(fig)
+    return plotly_layout(fig, show_legend=True)
 
 
 # =============================================================================
@@ -406,8 +411,6 @@ RISK_BADGE_COLORS = {
     "High Risk": {"bg": "rgba(242, 99, 112, 0.16)", "fg": "#f9848e"},
 }
 
-# The order the risk chart draws its three bars in: calmest first, so the eye
-# reads Low -> Medium -> High instead of jumping from the alarming red bar.
 # Chart styling that the design fixed.
 SCORE_BAR_COLOR = "#7d8dff"
 # Scores run out of 100, so the histogram keeps that full width instead of
@@ -1147,6 +1150,8 @@ def render_streamlit_charts(view):
 
     score_col, course_col = st.columns(2, vertical_alignment="top")
     empty = view.empty
+    can_score = has_chart_data(view, "Student Name", "Score")
+    can_count = has_chart_data(view, "Course")
 
     with score_col:
         chart_panel(
@@ -1156,7 +1161,7 @@ def render_streamlit_charts(view):
             "Students",
             score_legend=True,
             render=None
-            if empty
+            if empty or not can_score
             else lambda: st.bar_chart(
                 # Horizontal bars keep eight student names readable; vertical
                 # bars forced the labels to rotate on their side.
@@ -1175,7 +1180,7 @@ def render_streamlit_charts(view):
             "Cohort",
             score_legend=False,
             render=None
-            if empty
+            if empty or not can_count
             else lambda: st.bar_chart(
                 view["Course"].value_counts(),
                 color=PRIMARY,
@@ -1195,6 +1200,8 @@ def render_plotly_charts(view):
 
     risk_col, score_col = st.columns([0.8, 1.2], vertical_alignment="top")
     empty = view.empty
+    can_risk = has_chart_data(view, "Risk Level")
+    can_score = has_chart_data(view, "Student Name", "Score", "Risk Level")
 
     with risk_col:
         chart_panel(
@@ -1203,7 +1210,7 @@ def render_plotly_charts(view):
             "Students per risk level, counted from the filtered rows",
             "Cohort",
             render=None
-            if empty
+            if empty or not can_risk
             else lambda: st.plotly_chart(
                 risk_distribution_figure(view),
                 theme=None,
@@ -1219,7 +1226,7 @@ def render_plotly_charts(view):
             "Each student's score, coloured by the risk level it produced",
             "Cohort",
             render=None
-            if empty
+            if empty or not can_score
             else lambda: st.plotly_chart(
                 score_by_risk_figure(view),
                 theme=None,

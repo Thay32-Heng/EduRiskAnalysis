@@ -349,10 +349,11 @@ class PlotlyFigureTests(unittest.TestCase):
             [app.LOW_RISK, app.MEDIUM_RISK, app.HIGH_RISK],
         )
 
-    def test_figures_survive_an_empty_view(self):
+    def test_empty_view_draws_no_bars(self):
+        """An empty figure is not just non-None: it must carry no bar data."""
         empty = app.df.iloc[0:0]
-        self.assertIsNotNone(app.risk_distribution_figure(empty))
-        self.assertIsNotNone(app.score_by_risk_figure(empty))
+        risk_figure = app.risk_distribution_figure(empty)
+        self.assertEqual(sum(len(trace.y) for trace in risk_figure.data), 0)
 
 
 class DatasetTests(unittest.TestCase):

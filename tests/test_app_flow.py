@@ -281,6 +281,13 @@ class DashboardVisualizationTests(unittest.TestCase):
         app = self.open_dashboard()
         self.assertEqual(len(app.dataframe[2].value), 8)
 
+    def test_dashboard_draws_two_plotly_and_three_altair_charts(self):
+        app = self.open_dashboard()
+        self.assertEqual(len(app.get("plotly_chart")), 2)
+        # The two st.bar_chart charts and the score distribution all render as
+        # vega-lite elements, so three is the full set.
+        self.assertEqual(len(app.get("vega_lite_chart")), 3)
+
     def test_course_filter_updates_metrics_and_tables(self):
         app = self.open_dashboard()
         app.selectbox(key="er-filter-course").set_value("Python").run()
@@ -290,12 +297,22 @@ class DashboardVisualizationTests(unittest.TestCase):
         self.assertEqual(values["Average Score"], "67.33")
         self.assertEqual(len(app.dataframe[2].value), 3)
 
+        # The summary table must follow the filter, not the whole cohort.
+        course_table = app.dataframe[0].value
+        self.assertEqual(course_table["Course"].tolist(), ["Python"])
+        self.assertEqual(int(course_table["Students"].iloc[0]), 3)
+        self.assertAlmostEqual(course_table["Average_Score"].iloc[0], 67.3333, places=3)
+
     def test_risk_filter_leaves_only_that_level(self):
         app = self.open_dashboard()
         app.selectbox(key="er-filter-risk").set_value(app_module.HIGH_RISK).run()
 
         records = app.dataframe[2].value
         self.assertEqual(set(records["Risk Level"]), {app_module.HIGH_RISK})
+
+        # Every class member is accounted for: two High Risk rows.
+        risk_table = app.dataframe[1].value
+        self.assertEqual(risk_table["Students"].tolist(), [0, 0, 2])
 
     def test_attendance_slider_filters_the_records(self):
         app = self.open_dashboard()
