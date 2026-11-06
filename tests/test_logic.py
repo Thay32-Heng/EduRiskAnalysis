@@ -262,6 +262,99 @@ class NiceTicksTests(unittest.TestCase):
         self.assertEqual(ticks[0], 0)
 
 
+class CourseSummaryTests(unittest.TestCase):
+    """Lab 05: groupby() reduces the cohort to one row per course."""
+
+    def summary(self):
+        return app.course_summary(with_risk_level(make_rows()))
+
+    def test_columns_are_the_lab_ones(self):
+        self.assertEqual(
+            list(self.summary().columns), app.COURSE_SUMMARY_COLUMNS
+        )
+
+    def test_one_row_per_course(self):
+        self.assertEqual(sorted(self.summary()["Course"]), ["Database", "Python", "Statistics"])
+
+    def test_student_count_and_averages_per_course(self):
+        python = self.summary().set_index("Course").loc["Python"]
+        self.assertEqual(python["Students"], 2)
+        self.assertAlmostEqual(python["Average_Score"], 72.5)
+        self.assertAlmostEqual(python["Average_Attendance"], 72.5)
+        self.assertAlmostEqual(python["Average_Study_Hours"], 7.5)
+
+    def test_weakest_average_score_comes_first(self):
+        scores = self.summary()["Average_Score"].tolist()
+        self.assertEqual(scores[:2], sorted(scores[:2]))
+        self.assertEqual(self.summary().iloc[0]["Course"], "Python")
+
+    def test_missing_score_averages_out_of_the_mean_not_into_it(self):
+        database = self.summary().set_index("Course").loc["Database"]
+        self.assertTrue(pd.isna(database["Average_Score"]))
+        self.assertEqual(database["Students"], 1)
+
+    def test_empty_frame_keeps_the_headings(self):
+        empty = app.course_summary(with_risk_level(make_rows()).iloc[0:0])
+        self.assertTrue(empty.empty)
+        self.assertEqual(list(empty.columns), app.COURSE_SUMMARY_COLUMNS)
+
+
+class RiskSummaryTests(unittest.TestCase):
+    """Lab 05: value_counts() reduced to the three levels, always in order."""
+
+    def test_every_level_is_listed_in_risk_order(self):
+        summary = app.risk_summary(with_risk_level(make_rows()))
+        self.assertEqual(summary["Risk Level"].tolist(), app.RISK_LEVELS)
+
+    def test_counts_match_the_rows(self):
+        summary = app.risk_summary(with_risk_level(make_rows()))
+        counts = dict(zip(summary["Risk Level"], summary["Students"]))
+        self.assertEqual(counts[app.LOW_RISK], 1)
+        self.assertEqual(counts[app.MEDIUM_RISK], 1)
+        self.assertEqual(counts[app.HIGH_RISK], 2)
+        self.assertEqual(sum(counts.values()), len(make_rows()))
+
+    def test_a_level_nobody_is_on_stays_visible_with_zero(self):
+        low_only = make_rows().assign(**{"Risk Level": app.LOW_RISK})
+        summary = app.risk_summary(low_only)
+        counts = dict(zip(summary["Risk Level"], summary["Students"]))
+        self.assertEqual(counts[app.HIGH_RISK], 0)
+        self.assertEqual(len(summary), 3)
+
+    def test_empty_frame_keeps_the_headings(self):
+        empty = app.risk_summary(with_risk_level(make_rows()).iloc[0:0])
+        self.assertTrue(empty.empty)
+        self.assertEqual(list(empty.columns), app.RISK_SUMMARY_COLUMNS)
+
+
+class PlotlyFigureTests(unittest.TestCase):
+    """The Plotly figures are checked as data, not as pixels."""
+
+    def test_risk_figure_uses_the_three_risk_colours(self):
+        figure = app.risk_distribution_figure(with_risk_level(make_rows()))
+        colours = {trace.name: trace.marker.color for trace in figure.data}
+        self.assertEqual(colours[app.LOW_RISK], app.GREEN)
+        self.assertEqual(colours[app.MEDIUM_RISK], app.AMBER)
+        self.assertEqual(colours[app.HIGH_RISK], app.RED)
+
+    def test_risk_figure_counts_every_level(self):
+        figure = app.risk_distribution_figure(with_risk_level(make_rows()))
+        counts = {trace.name: int(trace.y[0]) for trace in figure.data}
+        self.assertEqual(counts[app.HIGH_RISK], 2)
+
+    def test_score_figure_has_a_trace_per_risk_level_present(self):
+        figure = app.score_by_risk_figure(with_risk_level(make_rows()))
+        self.assertEqual(
+            [trace.name for trace in figure.data],
+            [app.LOW_RISK, app.MEDIUM_RISK, app.HIGH_RISK],
+        )
+
+    def test_figures_survive_an_empty_view(self):
+        empty = app.df.iloc[0:0]
+        self.assertIsNotNone(app.risk_distribution_figure(empty))
+        self.assertIsNotNone(app.score_by_risk_figure(empty))
+
+
 class DatasetTests(unittest.TestCase):
     """Guards the CSV contract the dashboard depends on."""
 

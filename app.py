@@ -28,6 +28,7 @@ import altair as alt
 import math
 
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 from design.theme import AMBER, GREEN, MUTED, PRIMARY, RED, TEXT, inject_theme
@@ -39,7 +40,7 @@ from design.theme import AMBER, GREEN, MUTED, PRIMARY, RED, TEXT, inject_theme
 
 # set_page_config has to be the very first Streamlit call in the file.
 st.set_page_config(
-    page_title="EduRisk Analytics",
+    page_title="EduRisk Analytics - Lab 05",
     page_icon="🎓",
     layout="wide",
 )
@@ -242,6 +243,137 @@ def percent_of(part, whole):
     return math.floor(part / whole * 100 + 0.5)
 
 
+# ---------------------------------------------------------------- summaries
+# Lab 05: a grouped summary splits the rows into groups, calculates a statistic
+# for each group, then compares the groups. Both tables below are plain pandas,
+# not screen code, so they can be tested without a browser.
+
+# Every summary table keeps these columns even when there are no rows, so an
+# empty filter draws headings instead of raising.
+COURSE_SUMMARY_COLUMNS = [
+    "Course",
+    "Students",
+    "Average_Score",
+    "Average_Attendance",
+    "Average_Study_Hours",
+]
+RISK_SUMMARY_COLUMNS = ["Risk Level", "Students"]
+
+
+def course_summary(rows):
+    """One row per course: the student count and the average measures.
+
+    ``groupby()`` splits the rows, ``agg()`` calculates one statistic per group.
+    The table is sorted weakest average score first, because the dashboard
+    question is "which course needs support?" - sorting the other way would bury
+    the answer at the bottom of the table.
+    """
+    if rows.empty or "Course" not in rows.columns:
+        return pd.DataFrame(columns=COURSE_SUMMARY_COLUMNS)
+
+    # "Student Name" is counted rather than the rows, so a blank name cannot
+    # quietly disappear from the class size.
+    name_column = "Student Name" if "Student Name" in rows.columns else "Course"
+
+    summary = rows.groupby("Course", as_index=False).agg(
+        Students=(name_column, "count"),
+        Average_Score=("Score", "mean"),
+        Average_Attendance=("Attendance", "mean"),
+        Average_Study_Hours=("Study Hours", "mean"),
+    )
+
+    return summary.sort_values("Average_Score", kind="stable").reset_index(drop=True)
+
+
+def risk_summary(rows):
+    """How many students sit at each risk level.
+
+    ``value_counts()`` counts the levels, but its order follows the data and its
+    column name changes between pandas versions. So the counts are re-read in a
+    fixed Low -> Medium -> High order by name: the table reads the same way every
+    render, and a level nobody is on stays visible with a zero instead of
+    vanishing.
+    """
+    if rows.empty or "Risk Level" not in rows.columns:
+        return pd.DataFrame(columns=RISK_SUMMARY_COLUMNS)
+
+    counts = rows["Risk Level"].value_counts()
+
+    return pd.DataFrame(
+        {
+            "Risk Level": RISK_LEVELS,
+            "Students": [int(counts.get(level, 0)) for level in RISK_LEVELS],
+        }
+    )
+
+
+# ------------------------------------------------------------------- figures
+# The Plotly charts are built in their own functions so the *figure* can be
+# tested: a chart that draws the wrong bars is a bug the browser cannot reveal.
+def plotly_layout(fig):
+    """Paint a Plotly figure in the dashboard's dark palette.
+
+    Streamlit would otherwise apply its own light template over the custom
+    colours, so the charts are rendered with ``theme=None`` and styled here.
+    """
+    # The margins are not decoration: at l=8 the y tick labels were sliced in
+    # half, and at b=8 the x labels fell outside the card. These values were
+    # measured on the rendered page.
+    fig.update_layout(
+        height=CHART_HEIGHT,
+        margin=dict(l=44, r=14, t=16, b=34),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        font=dict(color=CATEGORY_LABEL_COLOR, size=11),
+        xaxis=dict(
+            title=None,
+            showgrid=False,
+            zeroline=False,
+            tickfont=dict(color=AXIS_LABEL_COLOR, size=10),
+        ),
+        yaxis=dict(
+            title=None,
+            gridcolor=PLOTLY_GRID_COLOR,
+            zeroline=False,
+            tickfont=dict(color=AXIS_LABEL_COLOR, size=10),
+        ),
+    )
+    return fig
+
+
+def risk_distribution_figure(rows):
+    """Interactive bars counting students per risk level, in risk colours."""
+    counts = risk_summary(rows)
+    fig = px.bar(
+        counts,
+        x="Risk Level",
+        y="Students",
+        color="Risk Level",
+        color_discrete_map=RISK_COLOR_MAP,
+        category_orders={"Risk Level": RISK_LEVELS},
+        text="Students",
+        labels={"Risk Level": "", "Students": "Students"},
+    )
+    # The number on the bar means the value is never encoded by colour alone.
+    fig.update_traces(textposition="outside", cliponaxis=False)
+    return plotly_layout(fig)
+
+
+def score_by_risk_figure(rows):
+    """Interactive bars of each student's score, coloured by risk level."""
+    fig = px.bar(
+        rows,
+        x="Student Name",
+        y="Score",
+        color="Risk Level",
+        color_discrete_map=RISK_COLOR_MAP,
+        category_orders={"Risk Level": RISK_LEVELS},
+        labels={"Student Name": "", "Score": "Score out of 100"},
+    )
+    return plotly_layout(fig)
+
+
 # =============================================================================
 # 3. SETTINGS - names, colours and the HTML blocks the design reuses
 # =============================================================================
@@ -276,19 +408,34 @@ RISK_BADGE_COLORS = {
 
 # The order the risk chart draws its three bars in: calmest first, so the eye
 # reads Low -> Medium -> High instead of jumping from the alarming red bar.
-RISK_CHART_ORDER = [LOW_RISK, MEDIUM_RISK, HIGH_RISK]
-RISK_CHART_COLORS = [GREEN, AMBER, RED]
-
 # Chart styling that the design fixed.
 SCORE_BAR_COLOR = "#7d8dff"
 # Scores run out of 100, so the histogram keeps that full width instead of
 # zooming to whatever the current filters happen to cover.
 SCORE_DOMAIN = [0, 100]
-RISK_BAR_WIDTH = {"band": 0.45}
 GRID_COLOR = "rgba(153, 161, 184, 0.16)"
 AXIS_LABEL_COLOR = "#767e81"
 CATEGORY_LABEL_COLOR = "#858c9e"
 CHART_HEIGHT = 250
+
+# Lab 05: Plotly reads the same palette as the Altair charts, so "High Risk" is
+# the same red in every chart on the page instead of a new colour per library.
+RISK_COLOR_MAP = {LOW_RISK: GREEN, MEDIUM_RISK: AMBER, HIGH_RISK: RED}
+PLOTLY_GRID_COLOR = "rgba(153, 161, 184, 0.12)"
+
+# The four numbers the summary tables show, formatted for display only - the
+# underlying frames stay numeric so the tests can compare them.
+SUMMARY_COLUMN_CONFIG = {
+    "Average_Score": st.column_config.NumberColumn("Average Score", format="%.2f"),
+    "Average_Attendance": st.column_config.NumberColumn(
+        "Average Attendance", format="%.1f%%"
+    ),
+    "Average_Study_Hours": st.column_config.NumberColumn(
+        "Average Study Hours", format="%.1f"
+    ),
+    "Students": st.column_config.NumberColumn("Students", format="%d"),
+}
+
 
 # The HTML blocks below are the parts of the design that Streamlit has no
 # widget for. Each one is a small chunk of markup that theme.py styles.
@@ -342,6 +489,17 @@ CHART_HEADING_HTML = """
     <p>{description}</p>
   </div>
   <span class="legend{modifier}">{legend}</span>
+</div>
+"""
+
+# The summary tables carry no legend pill, so they get the same heading
+# without the empty pill on the right.
+SUMMARY_HEADING_HTML = """
+<div class="chart-heading">
+  <div>
+    <h4>{title}</h4>
+    <p>{description}</p>
+  </div>
 </div>
 """
 
@@ -438,11 +596,6 @@ def risk_badge(level):
     return f'<span class="risk-badge {slug}">{level}</span>'
 
 
-def risk_legend():
-    """The little colour key that explains the three risk pills."""
-    st.html(" ".join(risk_badge(level) for level in RISK_LEVELS))
-
-
 def filter_footer(shown, total, active):
     """The 'Showing 8 of 8 students' line, with a chip counting active filters."""
     if active:
@@ -533,23 +686,6 @@ def x_axis():
         labelFontSize=10,
         labelLimit=90,
         labelPadding=6,
-    )
-
-
-def risk_x_axis():
-    """The risk chart's category axis, with the labels hidden.
-
-    The three bars are told apart by colour (green / amber / red) and the
-    legend chip, so the "Low Risk / Medium Risk / High Risk" text under the
-    chart is noise. ``labels=False`` keeps the axis *component* present - which
-    Vega-Lite needs so it merges with the overlay layer instead of dropping
-    every axis on the chart (see the ``axis=None`` note in ``risk_chart``).
-    """
-    return alt.Axis(
-        title=None,
-        domain=False,
-        tickColor="transparent",
-        labels=False,
     )
 
 
@@ -671,83 +807,24 @@ def score_chart(students):
     return (bars + thresholds).configure_view(strokeWidth=0)
 
 
-def risk_chart(students):
-    """How many students sit at each of the three risk levels.
-
-    Each bar carries its own "count - share" label, so the reader gets the
-    number and the percentage without hovering.
-    """
-    if not has_chart_data(students, "Risk Level"):
-        return None
-
-    counts = students["Risk Level"].value_counts()
-    # Only the three levels the chart draws, so an unexpected value in the
-    # column cannot quietly shrink every share away from adding up to 100%.
-    total = sum(int(counts.get(level, 0)) for level in RISK_CHART_ORDER)
-
-    def row(level):
-        number = int(counts.get(level, 0))
-        share = percent_of(number, total)
-        # An empty bar gets no label, otherwise "0 - 0%" floats over nothing.
-        label = f"{number} · {share}%" if number else ""
-        return {
-            "Risk Level": level,
-            "Students": number,
-            "Share": share,
-            "Label": label,
-        }
-
-    rows = [row(level) for level in RISK_CHART_ORDER]
-    ticks = nice_ticks(max(item["Students"] for item in rows))
-
-    bars = (
-        alt.Chart(alt.Data(values=rows))
-        .mark_bar(cornerRadiusEnd=5, width=RISK_BAR_WIDTH)
-        .encode(
-            x=alt.X("Risk Level:N", axis=risk_x_axis(), sort=RISK_CHART_ORDER),
-            y=alt.Y(
-                "Students:Q",
-                scale=alt.Scale(domain=[0, ticks[-1] * 1.12]),
-                axis=y_axis(ticks),
-            ),
-            color=alt.Color(
-                "Risk Level:N",
-                scale=alt.Scale(domain=RISK_CHART_ORDER, range=RISK_CHART_COLORS),
-                legend=None,
-            ),
-            tooltip=[
-                alt.Tooltip("Risk Level:N"),
-                alt.Tooltip("Students:Q"),
-                alt.Tooltip("Share:Q", title="Share %", format=".0f"),
-            ],
-        )
-        .properties(height=CHART_HEIGHT)
-    )
-
-    labels = (
-        alt.Chart(alt.Data(values=rows))
-        .mark_text(dy=-9, fontSize=10, color=CATEGORY_LABEL_COLOR)
-        .encode(
-            # Deliberately no ``axis`` here. Vega-Lite merges the axis into a
-            # single component shared by every layer, so writing ``axis=None``
-            # on the label layer does not hide *its* axis - it deletes the bars'
-            # axes too and the chart renders with no scale at all. Leaving the
-            # key out lets both layers agree, and the axes survive.
-            x=alt.X("Risk Level:N", sort=RISK_CHART_ORDER),
-            y=alt.Y("Students:Q"),
-            text=alt.Text("Label:N"),
-        )
-    )
-
-    return (bars + labels).configure_view(strokeWidth=0)
-
-
-def chart_panel(key, title, description, legend, chart, score_legend=False):
+def chart_panel(
+    key,
+    title,
+    description,
+    legend,
+    chart=None,
+    score_legend=False,
+    render=None,
+):
     """A chart inside a titled card, or the empty-state note when there is none.
 
     ``score_legend`` picks the legend chip style: the score panel counts
     *students* in score bands, so it gets the score-coloured dot, while the risk
     panel gets the plain cohort dot.
+
+    ``render`` is for the charts that cannot be handed over as one object - the
+    Streamlit and Plotly charts draw themselves through a small function, and an
+    empty view still falls back to the same empty-state note.
     """
     with st.container(key=key):
         st.html(
@@ -758,7 +835,9 @@ def chart_panel(key, title, description, legend, chart, score_legend=False):
                 modifier=" legend-score" if score_legend else "",
             )
         )
-        if chart is None:
+        if render is not None:
+            render()
+        elif chart is None:
             st.html(EMPTY_STATE_HTML)
         else:
             st.altair_chart(chart, width="stretch", key=f"{key}-chart")
@@ -982,7 +1061,7 @@ def render_metrics(view):
     with score_col:
         metric_card(
             "er-metric-score",
-            "Average score",
+            "Average Score",
             f"{average_of(view, 'Score'):.2f}",
             "Out of 100 points",
         )
@@ -990,7 +1069,7 @@ def render_metrics(view):
     with attendance_col:
         metric_card(
             "er-metric-attendance",
-            "Attendance",
+            "Average Attendance",
             f"{average_of(view, 'Attendance'):.1f}%",
             "Average attendance rate",
         )
@@ -998,38 +1077,189 @@ def render_metrics(view):
     with risk_col:
         metric_card(
             "er-metric-risk",
-            "High risk",
+            "High Risk",
             high_risk,
             f"{percent_of(high_risk, len(view))}% of filtered students",
         )
 
 
-def render_charts(view):
-    """The two chart panels, side by side."""
-    section_heading("Insights", "Performance patterns", "Updated with your filters")
+def render_summaries(view):
+    """The two grouped summary tables, side by side.
 
-    score_col, risk_col = st.columns([1.28, 0.92], vertical_alignment="top")
+    A grouped summary answers "how do the courses compare?", which a list of
+    individual students cannot: the rows are already reduced to one row per
+    group before they reach the screen.
+    """
+    section_heading(
+        "Grouped summaries",
+        "Course and risk summaries",
+        "One row per group, calculated from the filtered rows",
+    )
+
+    course_col, risk_col = st.columns([1.22, 0.78], vertical_alignment="top")
+
+    with course_col:
+        with st.container(key="er-summary-course"):
+            st.html(
+                SUMMARY_HEADING_HTML.format(
+                    title="Course summary",
+                    description="Average score, attendance and study hours per course",
+                )
+            )
+            table = course_summary(view)
+            if table.empty:
+                st.html(EMPTY_STATE_HTML)
+            else:
+                st.dataframe(
+                    table,
+                    hide_index=True,
+                    width="stretch",
+                    column_config=SUMMARY_COLUMN_CONFIG,
+                )
+
+    with risk_col:
+        with st.container(key="er-summary-risk"):
+            st.html(
+                SUMMARY_HEADING_HTML.format(
+                    title="Risk level summary",
+                    description="How the filtered students split across the three levels",
+                )
+            )
+            table = risk_summary(view)
+            if table.empty:
+                st.html(EMPTY_STATE_HTML)
+            else:
+                st.dataframe(
+                    table,
+                    hide_index=True,
+                    width="stretch",
+                    column_config=SUMMARY_COLUMN_CONFIG,
+                )
+
+
+def render_streamlit_charts(view):
+    """The two basic Streamlit charts: they need no figure object at all."""
+    section_heading(
+        "Streamlit charts",
+        "Quick charts",
+        "Built straight from the filtered dataframe",
+    )
+
+    score_col, course_col = st.columns(2, vertical_alignment="top")
+    empty = view.empty
 
     with score_col:
         chart_panel(
-            "er-chart-scores",
-            "Score distribution",
-            "How scores spread out, with the 60 and 75 risk thresholds",
+            "er-chart-streamlit-scores",
+            "Student scores",
+            "Every filtered student's score, out of 100",
             "Students",
-            chart=score_chart(view),
             score_legend=True,
+            render=None
+            if empty
+            else lambda: st.bar_chart(
+                # Horizontal bars keep eight student names readable; vertical
+                # bars forced the labels to rotate on their side.
+                view.set_index("Student Name")["Score"],
+                color=PRIMARY,
+                height=CHART_HEIGHT,
+                horizontal=True,
+            ),
         )
+
+    with course_col:
+        chart_panel(
+            "er-chart-streamlit-courses",
+            "Students by course",
+            "How many filtered students each course holds",
+            "Cohort",
+            score_legend=False,
+            render=None
+            if empty
+            else lambda: st.bar_chart(
+                view["Course"].value_counts(),
+                color=PRIMARY,
+                height=CHART_HEIGHT,
+                horizontal=True,
+            ),
+        )
+
+
+def render_plotly_charts(view):
+    """The interactive Plotly charts: hover for the exact numbers."""
+    section_heading(
+        "Interactive Plotly charts",
+        "Hover to explore",
+        "Same data as above, with tooltips and risk-coloured bars",
+    )
+
+    risk_col, score_col = st.columns([0.8, 1.2], vertical_alignment="top")
+    empty = view.empty
 
     with risk_col:
         chart_panel(
-            "er-chart-risk",
-            "Risk distribution",
-            "Students grouped by current risk level",
+            "er-chart-plotly-risk",
+            "Risk level distribution",
+            "Students per risk level, counted from the filtered rows",
             "Cohort",
-            chart=risk_chart(view),
-            score_legend=False,
+            render=None
+            if empty
+            else lambda: st.plotly_chart(
+                risk_distribution_figure(view),
+                theme=None,
+                width="stretch",
+                config={"displayModeBar": False},
+            ),
         )
-        risk_legend()
+
+    with score_col:
+        chart_panel(
+            "er-chart-plotly-scores",
+            "Student scores by risk level",
+            "Each student's score, coloured by the risk level it produced",
+            "Cohort",
+            render=None
+            if empty
+            else lambda: st.plotly_chart(
+                score_by_risk_figure(view),
+                theme=None,
+                width="stretch",
+                config={"displayModeBar": False},
+            ),
+        )
+
+
+def render_charts(view):
+    """The score distribution, with both risk thresholds drawn in."""
+    section_heading(
+        "Distribution",
+        "Where the scores fall",
+        "The 60 and 75 lines are the risk thresholds",
+    )
+
+    chart_panel(
+        "er-chart-scores",
+        "Score distribution",
+        "How the filtered scores spread out, band by band",
+        "Students",
+        chart=score_chart(view),
+        score_legend=True,
+    )
+
+
+def render_records(view):
+    """Every filtered student, in full, so a chart can always be checked."""
+    section_heading(
+        "Filtered records",
+        "Filtered student records",
+        "The rows behind every number above",
+    )
+
+    with st.container(key="er-records"):
+        if view.empty:
+            st.html(EMPTY_STATE_HTML)
+        else:
+            student_table(view, key="er-filtered-records-table")
 
 
 def render_table_card(rows, table_key, button_label, height=None):
@@ -1106,28 +1336,29 @@ def page_home():
     page_intro(
         "Welcome",
         "EduRisk Analytics",
-        "Reliable Risk Checker with Forms and Session State",
+        "Interactive Dashboard with Visualization and Filters",
         badge="Live prototype",
     )
-    st.write("Welcome to Lab 04.")
+    st.write("Welcome to Lab 05.")
     st.write(
         "EduRisk Analytics is a Streamlit dashboard for student academic "
         "monitoring. It reads a cohort CSV, turns score and attendance into a "
-        "risk level, and lets you filter, chart and export the view."
+        "risk level, and lets you filter, summarise, chart and export the view."
     )
     st.write(
-        "Open **Dashboard** for the cohort overview, **Student Data** for the "
-        "full table, or **Risk Checker** to score one student by hand — now "
-        "through a form that validates the name and keeps the session history."
+        "Open **Dashboard** for the interactive view — filters, metric cards, "
+        "grouped summary tables, Streamlit charts and Plotly charts. "
+        "**Student Data** shows the full table, and **Risk Checker** scores one "
+        "student by hand through a validated form with session history."
     )
     st.success(
-        f"Lab 04 app is running successfully — {len(df)} students read from "
+        f"Lab 05 app is running successfully — {len(df)} students read from "
         "students.csv."
     )
 
 
 def page_dashboard():
-    """Filters, metrics and the two charts."""
+    """The Lab 05 analytical dashboard: filter, summarise, visualise, inspect."""
     # The export button sits in the top bar, above the filter card, so it reads
     # the filters from session_state rather than from the widgets.
     topbar("Dashboard", csv_data=apply_filters(df, *current_filters()).to_csv(index=False))
@@ -1135,18 +1366,31 @@ def page_dashboard():
     page_intro(
         "Performance overview",
         "Student risk dashboard",
-        "Monitor performance, attendance, and risk signals across your "
-        "active courses.",
+        "Filter the cohort by course, risk level and attendance, then read the "
+        "summary tables and charts that answer the four dashboard questions.",
     )
 
     view = render_filter_card()
+
+    # One warning for the whole page, before any section is drawn: every block
+    # below also guards itself, so an empty filter never shows a stray 0 or a
+    # chart of nothing.
+    if view.empty:
+        st.warning(
+            "No students match the selected filters. Please adjust the filters."
+        )
+
     render_metrics(view)
+    render_summaries(view)
+    render_streamlit_charts(view)
+    render_plotly_charts(view)
     render_charts(view)
+    render_records(view)
 
     section_heading("Ethics", "Support, not punishment")
-    st.info(
-        "Ethics Reminder: Academic monitoring should support students, "
-        "not label or punish them."
+    st.warning(
+        "Ethics Reminder: Visualizations should support students and guide "
+        "academic support decisions, not label or punish students."
     )
 
 
@@ -1269,16 +1513,17 @@ def page_about():
             <span class="eyebrow">Project theme</span>
             <p class="er-text">EduRisk Analytics</p>
             <span class="eyebrow" style="margin-top:14px">Course</span>
-            <p class="er-text">Web App Development for Data Science — Lab 04</p>
+            <p class="er-text">Web App Development for Data Science — Lab 05</p>
             <span class="eyebrow" style="margin-top:14px">Topic</span>
-            <p class="er-text">Forms, Validation, and Session State</p>
+            <p class="er-text">Visualization and Interactivity</p>
             <span class="eyebrow" style="margin-top:14px">Description</span>
             <p class="er-text">
               An interactive student risk monitoring dashboard. Student data is
               loaded from students.csv with Pandas, and the risk level is
-              calculated from score and attendance. This version adds a form
-              with input validation to the Risk Checker page, and keeps the
-              recent checks in session state for the length of the visit.
+              calculated from score and attendance. This version turns the
+              Dashboard into an analytical view: filters, filtered metric cards,
+              grouped summary tables, Streamlit charts and interactive Plotly
+              charts, with the reliable Risk Checker from Lab 04 kept intact.
             </p>
             <span class="eyebrow" style="margin-top:14px">Live demo</span>
             <p class="er-text">
@@ -1288,12 +1533,18 @@ def page_about():
             """
         )
 
+    st.info(
+        "This version improves the Dashboard page using grouped summaries, "
+        "interactive filters, Streamlit charts, and Plotly charts."
+    )
+
     section_heading("Tools used", "Stack")
     st.html(
         '<span class="er-chip">Python</span>'
         '<span class="er-chip">Streamlit</span>'
         '<span class="er-chip">Pandas</span>'
         '<span class="er-chip">Altair</span>'
+        '<span class="er-chip">Plotly</span>'
         '<span class="er-chip">VS Code</span>'
     )
 

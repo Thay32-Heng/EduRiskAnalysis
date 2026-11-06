@@ -387,6 +387,13 @@ section[data-testid="stSidebar"] > div {
 .st-key-er-metric-risk,
 .st-key-er-chart-scores,
 .st-key-er-chart-risk,
+.st-key-er-summary-course,
+.st-key-er-summary-risk,
+.st-key-er-chart-streamlit-scores,
+.st-key-er-chart-streamlit-courses,
+.st-key-er-chart-plotly-risk,
+.st-key-er-chart-plotly-scores,
+.st-key-er-records,
 .st-key-er-dataset,
 .st-key-er-card {
   position: relative;
@@ -805,12 +812,31 @@ section[data-testid="stSidebar"] > div {
 }
 
 .st-key-er-chart-scores,
-.st-key-er-chart-risk {
+.st-key-er-chart-risk,
+.st-key-er-chart-streamlit-scores,
+.st-key-er-chart-streamlit-courses,
+.st-key-er-chart-plotly-risk,
+.st-key-er-chart-plotly-scores {
   border-radius: 12px;
 }
 
 .st-key-er-chart-scores [data-testid="stVegaLiteChart"],
 .st-key-er-chart-risk [data-testid="stVegaLiteChart"] {
+  margin-top: 14px;
+}
+
+/* The Streamlit and Plotly charts are drawn by other components, so they get
+   their own spacing rule instead of inheriting the Altair one. */
+.st-key-er-chart-streamlit-scores [data-testid="stArrowVegaLiteChart"],
+.st-key-er-chart-streamlit-courses [data-testid="stArrowVegaLiteChart"],
+.st-key-er-chart-plotly-risk [data-testid="stPlotlyChart"],
+.st-key-er-chart-plotly-scores [data-testid="stPlotlyChart"] {
+  margin-top: 14px;
+}
+
+.st-key-er-summary-course [data-testid="stDataFrame"],
+.st-key-er-summary-risk [data-testid="stDataFrame"],
+.st-key-er-records [data-testid="stDataFrame"] {
   margin-top: 14px;
 }
 
