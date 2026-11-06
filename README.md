@@ -1,14 +1,14 @@
 # EduRisk Analytics
 
-A student early-warning dashboard built with **Streamlit**, **Pandas** and **Altair**.
-It turns a cohort CSV into a filterable risk view so a lecturer can see who needs
-support before the final exam, not after it.
+A student early-warning dashboard built with **Streamlit**, **Pandas**, **Altair**
+and **Plotly**. It turns a cohort CSV into a filterable, interactive risk view so a
+lecturer can see who needs support before the final exam, not after it.
 
 ![EduRisk Analytics dashboard](assets/dashboard.png)
 
 **🌐 Live demo:** https://thay-edurisk.streamlit.app/
 
-**Lab 04 — Forms, Validation, and Session State** (continues from Lab 03)
+**Lab 05 — Visualization and Interactivity** (continues from Lab 04)
 
 ## The problem
 
@@ -21,7 +21,7 @@ result can be discussed with the student instead of silently acted on.
 
 | Page | Purpose |
 |---|---|
-| **Dashboard** | Cohort filters (course, risk level, minimum score/attendance), four KPI cards, score distribution and risk breakdown charts |
+| **Dashboard** | Interactive analytical view: cohort filters (course, risk level, minimum score/attendance), four filtered KPI cards, grouped course and risk summary tables, Streamlit charts, interactive Plotly charts, score distribution and the filtered records table |
 | **Student Data** | Full student table with the calculated risk level, a data-inspection block, and CSV download of the whole cohort (the Dashboard exports the filtered view) |
 | **Risk Checker** | Enter one student's score and attendance through a validated form to see the risk level and the reason behind it; recent checks stay in the session |
 | **About** | Project scope, stack and author |
@@ -29,11 +29,38 @@ result can be discussed with the student instead of silently acted on.
 Other features: custom dark theme (`design/theme.py`), export-report button,
 missing-CSV error handling, and an ethics reminder on the risk page.
 
+## What Lab 05 adds
+
+The lab turns the Dashboard into an interactive analytical dashboard. Everything
+below lives in `app.py`, and the summary maths and Plotly figures are covered by
+the unit tests while the click-through is covered by `tests/test_app_flow.py`:
+
+```text
+- import plotly.express as px, and plotly in requirements.txt
+- Dashboard filters in one row: course, risk level, minimum attendance
+  (the Lab 04 export still reads the same session state)
+- A single filtered_df built with .copy() before any number is calculated
+- st.warning("No students match the selected filters. Please adjust the filters.")
+- Filtered metric cards: Students, Average Score, Average Attendance, High Risk
+- Course summary: groupby("Course").agg(...) - students, average score,
+  average attendance, average study hours, weakest average score first
+- Risk level summary: value_counts(), re-read in a fixed Low -> Medium -> High
+  order so a level with zero students stays visible
+- Streamlit charts: st.bar_chart for student scores and students by course
+- Plotly charts: px.bar risk distribution and scores by risk level, with the
+  same green / amber / red risk palette and hover tooltips
+- Filtered student records table at the bottom of the Dashboard
+- Ethics reminder on the Dashboard and About pages
+```
+
+Every section guards itself when the filters match nobody: the page shows one
+warning, the cards fall back to an empty-state note, and nothing divides by zero.
+
+![Dashboard summaries and Streamlit charts](assets/dashboard-lab05.png)
+
 ## What Lab 04 adds
 
-The lab asked for a reliable form-based workflow on the Risk Checker page. All of
-it lives in `app.py` and is covered by the unit tests plus the headless app-flow
-tests in `tests/test_app_flow.py`:
+The Risk Checker page keeps the form-based workflow from Lab 04, unchanged:
 
 ```text
 - st.form() grouping the three inputs
@@ -43,7 +70,6 @@ tests in `tests/test_app_flow.py`:
 - st.session_state["risk_history"] — temporary list of recent checks
 - Recent Risk Checks table, built with Pandas from that list
 - Clear History button, with a one-shot confirmation message
-- Ethics reminders on the Risk Checker and Dashboard pages
 ```
 
 Session state is temporary by design: the history is dropped when the browser
@@ -71,7 +97,8 @@ without touching the layout.
 - Python 3.11+ (CI uses 3.12)
 - Streamlit 1.51+ (tested on 1.66)
 - Pandas 2.2+ (tested on 3.1)
-- Altair (charts)
+- Altair (distribution chart)
+- Plotly (interactive charts)
 - `unittest` for the logic tests, Streamlit `AppTest` for the flow tests
 - GitHub Actions running the test suite on every push
 
@@ -83,8 +110,8 @@ EduRiskAnalysis/
 ├── design/theme.py            # palette + injected stylesheet
 ├── .streamlit/config.toml     # Streamlit theme matching the palette
 ├── students.csv               # sample cohort (8 records, synthetic)
-├── tests/test_logic.py        # risk rule, filters, metrics, dataset contract
-├── tests/test_app_flow.py     # headless AppTest flow: form, history, clear
+├── tests/test_logic.py        # risk rule, filters, metrics, summaries, figures
+├── tests/test_app_flow.py     # headless AppTest flow: form, history, dashboard
 ├── tests/__init__.py          # package init; silences Streamlit's bare-mode noise
 ├── assets/                    # README screenshots
 ├── requirements.txt
@@ -114,16 +141,19 @@ The app opens at `http://localhost:8501`.
 python -m unittest discover -s tests -t . -v
 ```
 
-66 tests cover the risk boundaries (59.9 / 60 / 74.9 / 75), missing values,
+87 tests cover the risk boundaries (59.9 / 60 / 74.9 / 75), missing values,
 the four cohort filters, the active-filter counter, the metric helpers, the
-axis ticks, the CSV contract, and the Lab 04 form logic (name validation, the
-history record, the history table and the feedback messages).
+grouped summary tables, the Plotly figure data, the axis ticks, the CSV contract,
+and the Lab 04 form logic (name validation, the history record, the history table
+and the feedback messages).
 
-`tests/test_app_flow.py` adds 20 of them as *flow* tests: it runs `app.py` with
-Streamlit's `AppTest` and clicks the real widgets - submit the form, get the
-warning for an empty name, watch the history grow, clear it in one click. That
-suite is what catches a broken append or a validation gate that stopped working;
-the plain unit tests cannot see either. The same command runs in CI.
+`tests/test_app_flow.py` adds the *flow* tests: it runs `app.py` with Streamlit's
+`AppTest` and clicks the real widgets - submit the form, get the warning for an
+empty name, watch the history grow, clear it in one click, then filter the
+dashboard by course, risk level and attendance and read the tables back. That
+suite is what catches a broken append, a validation gate that stopped working or
+a dashboard that divides by zero; the plain unit tests cannot see any of them.
+The same command runs in CI.
 
 ## Data
 
@@ -156,7 +186,7 @@ Swap in a real export with the same columns and the app works unchanged.
 
 **Heng Sengthay** — Student ID 73191
 Data Science of Engineering, Year 3, Royal University of Phnom Penh
-Course project: Web App Development for Data Science (Lab 04)
+Course project: Web App Development for Data Science (Lab 05)
 GitHub: [@Thay32-Heng](https://github.com/Thay32-Heng)
 
 ## Student information
